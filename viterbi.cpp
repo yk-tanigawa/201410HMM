@@ -1,10 +1,11 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <float.h>
+#include <string>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
 #include "hmm.h"
 #include "viterbi.h"
+#include <iostream>
+using namespace std;
 
 #define BUF_SIZE 256
 
@@ -58,19 +59,19 @@ tracebk *tracebk_push(tracebk *list, int *ary, int length){
   /* trace back pointerをスタックに積む 
    * スタックは連結リストとして実装されている */
   int i;
-  tracebk *new = calloc(1, sizeof(tracebk));
-  new -> tr = calloc(length, sizeof(int));
+  tracebk *new_trb = new tracebk;
+  new_trb -> tr = new int [length];
   for(i = 0; i < length; i++){
-    (new -> tr)[i] = ary[i];
+    (new_trb -> tr)[i] = ary[i];
   }
-  new -> next = list;
+  new_trb -> next = list;
   if(list != NULL){
-    (new -> t) = ((list -> t) + 1);
+    (new_trb -> t) = ((list -> t) + 1);
   }else{
-    (new -> t) = 1;
+    (new_trb -> t) = 1;
   }
   //viterbi_tracebk_dump(new, length);
-  return new;
+  return new_trb;
 }
 
 
@@ -126,7 +127,7 @@ void viterbi_repeat(hmm *hmm, FILE *data,
       /* 文字cを数値に変換 */
       c_index = hmm_alph_to_digit(hmm, c);
       /* traceback用の配列を確保*/
-      int *tracebk = calloc(hmm -> state_size, sizeof(int));
+      int *tracebk = new int [hmm -> state_size];
       //printf("tracebk[] allocated: ");
       //int_ary_dump(tracebk, hmm -> state_size);
       for(l = 0; l < (hmm -> state_size); l++){
@@ -151,7 +152,7 @@ void viterbi_repeat(hmm *hmm, FILE *data,
       int_ary_dump(tracebk, hmm -> state_size);
 #endif
       tr = tracebk_push(tr, tracebk, hmm -> state_size);
-      free(tracebk);
+      delete tracebk;
 #if 0
       fprintf(stdout, "%c", c);      
       viterbi_dump_expl(lv, hmm -> state_size);
@@ -174,7 +175,7 @@ int *viterbi_traceback(tracebk *tr, hmm *hmm,
   /* viterbiのトレースバックを行い，結果を入れた配列を返す */
   //  printf("length :%d tracebk from %d \n", length, tracebk_start);
   int i, length = tr -> t;
-  int *results = calloc(length, sizeof(int));
+  int *results = new int [length];
   for(i = length; i > 0; i--){
     results[i - 1] = tracebk_start;
     //printf("%d: %d\n", i, tracebk_start);
@@ -193,9 +194,9 @@ int viterbi_repeat_init(hmm *hmm, FILE *data){
   fscanf( data, "%s", first_line);
 
   /* Viterbi変数を宣言 */
-  long double *lv_before = calloc((hmm -> state_size), sizeof(long double));
+  long double *lv_before = new long double [hmm -> state_size];
   /* lv_before: t = t - 1 での Viterbi変数 の log をとったもの*/
-  long double *lv        = calloc((hmm -> state_size), sizeof(long double));
+  long double *lv        = new long double [hmm -> state_size];
   /* lv       : t = t     での Viterbi変数 の log をとったもの*/
   lv[0] = logl(1);
   int i;
@@ -210,7 +211,7 @@ int viterbi_repeat_init(hmm *hmm, FILE *data){
   return EXIT_SUCCESS;
 }
 
-inline int viterbi_file_open(const char *params, const char *data){
+int viterbi_file_open(const char *params, const char *data){
   /* HMM のパラメータファイルと，データファイルの名前を
    * 受け取ってviterbiアルゴリズムを適用する。
    * ファイルが存在しない場合は中止 */
@@ -269,10 +270,10 @@ void tracebk_debug(void){
   int i;
   tracebk *temp = NULL;  
   for(i = 0; i < 4; i++){
-    int *ary = calloc(4, sizeof(int));
+    int *ary = new int [4];
     ary[0] = i;
     temp = tracebk_push(temp, ary, 4);
-    free(ary);
+    delete ary;
   }
   return;
 }
@@ -280,6 +281,16 @@ void tracebk_debug(void){
 
 int main(int argc, char *argv[]){
   //tracebk_debug();
+#if 0
+  char *alph = new char [4];
+  for(int i = 0; i < 4; i++){
+    scanf("%1s", &(alph[i]));
+    fflush(stdin);
+  }
+  printf("%s\n", alph);
+  return 0;
+#endif
+#if 1
   if(argc < 2){
     fprintf(stderr, "usage: $%s <parameter file> <FASTA file>\n", argv[0]);
     return EXIT_FAILURE;
@@ -287,4 +298,5 @@ int main(int argc, char *argv[]){
   }else{
     return viterbi_file_open(argv[1], argv[2]);
   }
+#endif
 }

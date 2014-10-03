@@ -1,12 +1,13 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <float.h>
+#include <string>
+#include <cstdio>
+#include <cstdlib>
+#include <cmath>
 #include "hmm.h"
 #include "viterbi.h"
+#include <iostream>
+using namespace std;
 
-inline int hmm_alph_to_digit(hmm *hmm, char c){
+int hmm_alph_to_digit(hmm *hmm, char c){
   /* 
    * hmm の中に含まれるアルファベットの文字を受け取って、
    * 何番目の文字であるかindexを返す
@@ -30,38 +31,43 @@ hmm *hmm_init(const int alph_size, const int state_size){
    * パラメータのセットは別の関数で行う。
    */
   int i;
-  hmm *new = calloc(1, sizeof(hmm));
-  new -> alph   = calloc(alph_size,  sizeof(char));
-  new -> trans  = calloc(state_size, sizeof(long double *));
-  new -> ltrans  = calloc(state_size, sizeof(long double *));
+  hmm *new_hmm = new hmm;
+  new_hmm -> alph   = new char [alph_size];
+  new_hmm -> trans   = new long double * [state_size];
+  new_hmm -> ltrans  = new long double * [state_size];
   for(i = 0; i < state_size; i++){
-    (new -> trans)[i] = calloc(state_size, sizeof(long double));
-    (new -> ltrans)[i] = calloc(state_size, sizeof(long double));
+    (new_hmm -> trans)[i]  = new long double [state_size];
+    (new_hmm -> ltrans)[i] = new long double [state_size];
   }
-  new -> emit   = calloc(state_size,  sizeof(long double *));
-  new -> lemit   = calloc(state_size,  sizeof(long double *));
+  new_hmm -> emit   = new long double * [state_size];
+  new_hmm -> lemit  = new long double * [state_size];
   for(i = 0; i < state_size; i++){
-    (new -> emit)[i]  = calloc(alph_size, sizeof(long double));
-    (new -> lemit)[i]  = calloc(alph_size, sizeof(long double));
+    (new_hmm -> emit)[i]  = new long double [state_size];
+    (new_hmm -> lemit)[i] = new long double [state_size];
   }
-  new -> state_size = state_size;
-  new -> alph_size = alph_size;
-  return new;
+  new_hmm -> state_size = state_size;
+  new_hmm -> alph_size = alph_size;
+  return new_hmm;
 }
 
 void hmm_destroy(hmm *hmm){
   /* HMMの構造体をfreeする */
   int i;
   for(i = 0; i < (hmm-> state_size); i++){
-    free((hmm -> trans)[i]);
+    delete [] (hmm -> trans)[i];
+    delete [] (hmm -> ltrans)[i];
   }
   for(i = 0; i < (hmm-> state_size); i++){
-    free((hmm -> emit)[i]);
+    delete [] (hmm -> emit)[i];
+    delete [] (hmm -> lemit)[i];
   }
-  free(hmm -> trans);
-  free(hmm -> emit);
-  free(hmm -> alph);
-  free(hmm);
+  delete [] hmm -> trans;
+  delete [] hmm -> ltrans;
+  delete [] hmm -> emit;
+  delete [] hmm -> lemit;
+  delete [] hmm -> alph;
+  delete [] hmm -> trans;
+  delete hmm;
   return;
 }
 
@@ -112,20 +118,23 @@ hmm *read_params(FILE *fp_params){
   int alph_size, state_size; /* 読み込んだ入力を格納する変数 */
 
   fscanf(fp_params, "%d", &alph_size);
-    
   fflush(stdin);
-  char *alph = calloc(alph_size, sizeof(char));
+
+  char *alph = new char [alph_size];
   for(i = 0; i < alph_size; i++){
     fscanf(fp_params, "%1s", &(alph[i]));
     fflush(stdin);
   }
   fscanf(fp_params, "%d", &state_size);
   fflush(stdin);
-    
+
+  /* アルファベット集合を構造体にコピーする */    
   hmm *model = hmm_init(alph_size, state_size);
-  strcpy(model -> alph, alph);
-  /* アルファベット集合を構造体にコピーする */
-  
+  for(i = 0; i < alph_size; i++){
+    (model -> alph)[i] = alph[i];
+  }
+  delete alph;
+
   /* 状態遷移確率を読み込む */
   for(i = 0; i < state_size; i++){
     for(j = 0; j < state_size; j++){
