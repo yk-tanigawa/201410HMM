@@ -1,17 +1,17 @@
-CC = gcc
-LD = gcc
+CC = g++
+LD = g++
 CFLAGS = -Wall -lm  #-O2
 LDFLAGS = -lm #-lpthread
-SRCS := $(wildcard *.c) # wildcard
-OBJS = $(SRCS:.c=.o)
-DEPS = $(SRCS:.c=.dep)
-EXEC = $(SRCS:.c=)
+SRCS := $(wildcard *.cpp) # wildcard
+OBJS = $(SRCS:.cpp=.o)
+DEPS = $(SRCS:.cpp=.dep)
+EXEC = $(SRCS:.cpp=)
 RM = rm -f
 
 
 all: viterbi
 
-viterbi.o: viterbi.c viterbi.h
+viterbi.o: viterbi.cpp viterbi.h
 
 viterbi: viterbi.o hmm.o
 	$(LD)  -o $@ $^ $(LDFLAGS)
