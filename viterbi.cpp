@@ -125,7 +125,7 @@ void viterbi_repeat(hmm *hmm, FILE *data,
        * lv_beforeに入っていた内容は忘れる */
       double_ary_cpy(lv_before, lv, hmm -> state_size);
       /* 文字cを数値に変換 */
-      c_index = hmm_alph_to_digit(hmm, c);
+      c_index = hmm->alph_to_digit(c);
       /* traceback用の配列を確保*/
       int *tracebk = new int [hmm -> state_size];
       //printf("tracebk[] allocated: ");
@@ -238,7 +238,7 @@ int viterbi_file_open(const char *params, const char *data){
 int viterbi(FILE *params, FILE *data){
   /* 入力を受け取ってviterbiを回す */
   hmm *hmm = read_params(params);
-  //hmm_dump(hmm);
+  //hmm->dump();
   viterbi_repeat_init(hmm, data);
   hmm_destroy(hmm);
   return EXIT_SUCCESS;

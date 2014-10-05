@@ -1,7 +1,8 @@
 #ifndef __HMM__
 #define __HMM__
 
-struct hmm{
+class hmm{
+public:
   /* HMM の構造体 */
   int state_size;  /* 状態数 */
   int alph_size;   /* アルファベットの数 */
@@ -10,12 +11,14 @@ struct hmm{
   long double **emit;   /* 出力確率 */
   long double **ltrans; /* 遷移確率のlog */
   long double **lemit;  /* 出力確率のlog */
+  hmm(const int a_size, const int s_size);
+  hmm(){}
+  hmm *init(const int a_size, const int s_size);
+  int alph_to_digit(char c);
+  void dump();
 };
 
-int hmm_alph_to_digit(hmm *, char);
-hmm *hmm_init(const int, const int);
 void hmm_destroy(hmm *);
-void hmm_dump(const hmm *);
 hmm *read_params(FILE *);
 
 

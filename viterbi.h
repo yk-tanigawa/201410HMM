@@ -3,10 +3,11 @@
 #ifndef __VITERBI__
 #define __VITERBI__
 
-struct tracebk{
+class tracebk{
   /* ある時刻t でのtrace back pointerを表す構造体
    * 連結リストとしてtrack backのための情報を保持 */
-  int t;   /* time t */
+public:
+  int t;   /* time t */  
   int *tr; /* trace back pointer 長さ(状態数)の配列*/
   tracebk *next;   /* linked list */
 };

@@ -34,3 +34,5 @@
 #other sample case
 params2.txt
 sample-RNA2.fa
+
+.gitignore
