@@ -1,7 +1,7 @@
 #ifndef __HMM__
 #define __HMM__
 
-typedef struct hmm_{
+struct hmm{
   /* HMM の構造体 */
   int state_size;  /* 状態数 */
   int alph_size;   /* アルファベットの数 */
@@ -10,8 +10,7 @@ typedef struct hmm_{
   long double **emit;   /* 出力確率 */
   long double **ltrans; /* 遷移確率のlog */
   long double **lemit;  /* 出力確率のlog */
-} hmm;
-
+};
 
 int hmm_alph_to_digit(hmm *, char);
 hmm *hmm_init(const int, const int);

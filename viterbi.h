@@ -3,14 +3,13 @@
 #ifndef __VITERBI__
 #define __VITERBI__
 
-typedef struct tracebk_{
+struct tracebk{
   /* ある時刻t でのtrace back pointerを表す構造体
    * 連結リストとしてtrack backのための情報を保持 */
   int t;   /* time t */
   int *tr; /* trace back pointer 長さ(状態数)の配列*/
-  struct tracebk_ *next;   /* linked list */
-} tracebk;
-
+  tracebk *next;   /* linked list */
+};
 
 void results_show(int *, int);
 void double_ary_cpy(long double *, const long double *,const int);

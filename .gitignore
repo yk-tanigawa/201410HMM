@@ -27,3 +27,10 @@
 *.i*86
 *.x86_64
 *.hex
+
+#report
+20141001HMM_tanigawa.txt
+
+#other sample case
+params2.txt
+sample-RNA2.fa
