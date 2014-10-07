@@ -8,9 +8,7 @@ class hmm{
   long double **ltrans; /* 遷移確率のlog */
   long double **lemit;  /* 出力確率のlog */
 public:
-  int state_size;  /* 状態数 */
-  int alph_size;   /* アルファベットの数 */
-  char *alph;      /* 出力アルファベット記号 */
+
   hmm(const int a_size, const int s_size);
   hmm(){}
   int alph_to_digit(char c);

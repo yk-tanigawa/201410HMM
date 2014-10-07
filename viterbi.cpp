@@ -240,14 +240,14 @@ int viterbi(FILE *params, FILE *data){
   hmm *hmm = read_params(params);
   //hmm->dump();
   viterbi_repeat_init(hmm, data);
-  hmm_destroy(hmm);
+  hmm->destroy();
   return EXIT_SUCCESS;
 }  
 
 /*
  * 以下debug用関数
  */
-
+#if 0
 void viterbi_repeat_debug1(int k, int l,
 			     long double temp, long double max,
 			     long double ltrans_kl, long double *lv_before){
@@ -277,7 +277,7 @@ void tracebk_debug(void){
   }
   return;
 }
-
+#endif
 
 int main(int argc, char *argv[]){
   //tracebk_debug();

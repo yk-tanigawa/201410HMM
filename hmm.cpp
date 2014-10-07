@@ -47,6 +47,7 @@ hmm::hmm(const int a_size, const int s_size){
 #endif
 }
 
+#if 1
 hmm *hmm::init(const int a_size, const int s_size){
   /*
    * 本当はコンストラクタをつかって行いたいから将来的に
@@ -74,24 +75,23 @@ hmm *hmm::init(const int a_size, const int s_size){
   new_hmm -> alph_size = a_size;
   return new_hmm;
 }
+#endif
 
-void hmm_destroy(hmm *hmm){
+void hmm::destroy(){
   /* HMMの構造体をfreeする */
-  for(int i = 0; i < (hmm-> state_size); i++){
-    delete [] (hmm -> trans)[i];
-    delete [] (hmm -> ltrans)[i];
+  for(int i = 0; i < state_size; i++){
+    delete [] trans[i];
+    delete [] ltrans[i];
+    delete [] emit[i];
+    delete [] lemit[i];
   }
-  for(int i = 0; i < (hmm-> state_size); i++){
-    delete [] (hmm -> emit)[i];
-    delete [] (hmm -> lemit)[i];
-  }
-  delete [] hmm -> trans;
-  delete [] hmm -> ltrans;
-  delete [] hmm -> emit;
-  delete [] hmm -> lemit;
-  delete [] hmm -> alph;
-  delete [] hmm -> trans;
-  delete hmm;
+  delete [] trans;
+  delete [] ltrans;
+  delete [] emit;
+  delete [] lemit;
+  delete [] alph;
+  delete [] trans;
+  delete this;
   return;
 }
 
@@ -103,28 +103,28 @@ void hmm::dump(){
   fprintf(stdout, "transition probability matrix is as follows:\n");
   for(int i = 0; i < state_size; i++){
     for(int j = 0; j < state_size; j++){
-      fprintf(stdout, "%10Lf", (trans)[i][j]);
+      fprintf(stdout, "%10Lf", trans[i][j]);
     }
     fprintf(stdout, "\n");
   }
   fprintf(stdout, "log transition probability matrix is as follows:\n");
   for(int i = 0; i < state_size; i++){
     for(int j = 0; j < state_size; j++){
-      fprintf(stdout, "%10Lf", (ltrans)[i][j]);
+      fprintf(stdout, "%10Lf", ltrans[i][j]);
     }
     fprintf(stdout, "\n");
   }
   fprintf(stdout, "emittion probabiliry matrix is as follows:\n");
   for(int i = 0; i < state_size; i++){
     for(int j = 0; j < alph_size; j++){
-      fprintf(stdout, "%10Lf", (emit)[i][j]);
+      fprintf(stdout, "%10Lf", emit[i][j]);
     }
     fprintf(stdout, "\n");
   }
   fprintf(stdout, "log emittion probabiliry matrix is as follows:\n");
   for(int i = 0; i < state_size; i++){
     for(int j = 0; j < alph_size; j++){
-      fprintf(stdout, "%10Lf", (lemit)[i][j]);
+      fprintf(stdout, "%10Lf", lemit[i][j]);
     }
     fprintf(stdout, "\n");
   }
@@ -163,21 +163,22 @@ hmm *read_params(FILE *fp_params){
   /* 状態遷移確率を読み込む */
   for(int i = 0; i < state_size; i++){
     for(int j = 0; j < state_size; j++){
-      fscanf(fp_params, "%Lf", &((model -> trans)[i][j]));
-      (model -> ltrans)[i][j] = log((model -> trans)[i][j]);
+      long double input;
+      fscanf(fp_params, "%Lf", &input);
+      model -> set_trans(i, j, input);
       fflush(stdin);
     }
   }
-    
   /* 出力確率を読み込む */
   for(int j = 0; j < alph_size; j++){
-    (model -> lemit)[0][j] = log(0);
+    model -> set_emit(0, j, 0);
   }
   /* s0の出力確率は0であることに注意。s1から読み込む */
   for(int i = 1; i < state_size; i++){
     for(int j = 0; j < alph_size; j++){
-      fscanf(fp_params, "%Lf", &((model -> emit)[i][j]));
-      (model -> lemit)[i][j] = log((model -> emit)[i][j]);
+      long double input;
+      fscanf(fp_params, "%Lf", &input);
+      model -> set_emit(i, j, input);
       fflush(stdin);
     }
   }
