@@ -51,6 +51,7 @@ void ary_dump_expl(T *ary, string format, int len){
 
 template <class T>
 int find_max_index(T *ary, int len){
+  /* 長さlenの配列の要素で，最大のものが格納されているindexを返す */
   T max = ary[0];
   int index = 0;
   for(int i = 1; i < len; i++){
@@ -60,8 +61,10 @@ int find_max_index(T *ary, int len){
 }
 
 class hmm;
+class data;
 class job;
 class viterbi;
+class forward_backward;
 
 class hmm{
   /* HMM の構造体 */
@@ -72,6 +75,16 @@ class hmm{
   int state_size;   /* 状態数 */
   int alph_size;    /* アルファベットの数 */
   string alph;      /* アルファベット */
+  int alph_to_digit(char c){
+    /* hmm の中に含まれるアルファベットの文字を受け取って、
+     * 何番目の文字であるかindexを返す*/
+    for(int i = 0; i < alph.length(); i++){
+      if(alph[i] == c){ return i; }
+    }
+    /* HMMのアルファベットテーブルの中に見つからない */
+    cerr << "data file conteins unknown alphabet " << c << endl;
+    exit(EXIT_FAILURE);
+  }
 public:
   int a_size(){ return alph_size; }  
   int s_size(){ return state_size; }  
@@ -97,16 +110,6 @@ public:
     state_size = s_size;
     alph_size = a_size;
     return;
-  }
-  int alph_to_digit(char c){
-    /* hmm の中に含まれるアルファベットの文字を受け取って、
-     * 何番目の文字であるかindexを返す*/
-    for(int i = 0; i < alph.length(); i++){
-      if(alph[i] == c){ return i; }
-    }
-    /* HMMのアルファベットテーブルの中に見つからない */
-    cerr << "data file conteins unknown alphabet " << c << endl;
-    exit(EXIT_FAILURE);
   }
   int *data_convert(const string str){
     int *data = new int [str.length()];
@@ -142,13 +145,14 @@ public:
 };
 
 class viterbi{
+  /* viterbi algorithmのためのクラス */
   long double *lv;
   long double *lv_before;
   int **tracebk;
-  int *path;
+  int *path; /* 求めたViterbi pathを入れる */
   int s_size;
   int a_size;
-  int length;
+  int length; /* データの長さ */
   hmm *model;
 public:
   int init(int l, hmm *m){
@@ -174,21 +178,50 @@ public:
   friend int viterbi_body(job &j);
 };
 
+class forward_backward{
+  long double **tbl; /*logをとった後の値を保存*/
+  long double *scale;
+  int len;
+  int s_size;
+  hmm *model;
+public:
+  forward_backward(job j){
+    len = j.length();
+    s_size = j.model -> state_size;
+    tbl = new long double * [len];
+    for(int t = 0; t < len; t++){
+      tbl[t] = new long double [s_size];
+    }
+    scale = new long double [len];
+  }
+  int forward();
+};
+
+class data{
+  int  len;
+public:
+  string head;
+  int *ary;
+  int length(){ return len; }
+};
+
 class job{
   hmm   *model;
   int   *data;
   int    data_len;
   string data_head;
-  long double *forward;
-  long double *backward;
+  int data_num;
+  forward_backward *forward;
+  forward_backward *backward;
 public:
   void init(hmm m, string head, int *ary, int len){
     model = &m;   data_head = head;
     data = ary;  data_len = len;  return;
   }
-  ~job(){
+  void init(hmm m){ model = &m; }
+  void destroy(){
     delete [] data;
-    //model->destroy();
+    model->destroy();
     return;
   }
   void dump(){ /* job classの内容を表示 */
@@ -201,8 +234,9 @@ public:
   friend int viterbi_body(job &j);
 };
 
-
 vector<string> split(const string &str, char delim);
+istream &getline_wocomment(char c, istream &is, string &str);
+
 
 vector<string> split(const string &str, char delim){
   /* strを受け取って delim でsplitしてvector<string>として返す */
@@ -221,7 +255,7 @@ istream &getline_wocomment(char c, istream &is, string &str){
   getline(is, str);
   int comment_start = str.find(c);
   if(comment_start >= 0)
-    str.erase(str.find(c));
+    str.erase(comment_start);
   return is;
 }
 
@@ -364,6 +398,28 @@ inline int viterbi::repeat(int t, int c){
   return 0;
 }
 
+
+int forward_backward::forward(){
+  /* forward変数(log)の初期可 */
+  tbl[0][0] = logl(1); scale[0] = 1.0;
+  for(int s = 1; s < s_size; s++){
+    tbl[0][s] = logl(0);
+  }
+
+  /* アルゴリズム本体を回す */
+  for(int t = 0; t < len; t++){
+    for(int l = 0; l < s_size; l++){
+      long double sum = 0;
+      for(int k = 0; k < s_size; k++){
+	sum += expl(tbl[t - 1][k] + model -> get_ltrans(l, c));
+      }
+    }
+  }
+
+  return 0;
+}
+
+
 int main(int argc, char *argv[]){
   if(argc < 2){
     cerr << "usage: $" << argv[0] << " <parameter file> <FASTA file>" << endl;
@@ -373,7 +429,13 @@ int main(int argc, char *argv[]){
     prepare(myjob, (char *)"params.txt", (char *)"sample-RNA.fa");
     //myjob.dump();
     viterbi_body(myjob);
+
+    forward_backward forward(myjob);
+    forward.forward();
+
+
     //myjob.dump();
+    myjob.destroy();
     return 0;
   }
 }
