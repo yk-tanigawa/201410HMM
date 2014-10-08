@@ -365,12 +365,15 @@ inline int viterbi::repeat(int t, int c){
 }
 
 int main(int argc, char *argv[]){
-  job myjob;
-  prepare(myjob, (char *)"params.txt", (char *)"sample-RNA.fa");
-  //myjob.dump();
-  viterbi_body(myjob);
-  //myjob.dump();
-  return 0;
-  //return viterbi_prepare(argv[1], argv[2]);
+  if(argc < 2){
+    cerr << "usage: $" << argv[0] << " <parameter file> <FASTA file>" << endl;
+    return EXIT_FAILURE;
+  }else{
+    job myjob;
+    prepare(myjob, (char *)"params.txt", (char *)"sample-RNA.fa");
+    //myjob.dump();
+    viterbi_body(myjob);
+    //myjob.dump();
+    return 0;
+  }
 }
-
