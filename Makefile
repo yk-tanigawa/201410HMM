@@ -9,14 +9,9 @@ EXEC = $(SRCS:.cpp=)
 RM = rm -f
 
 
-all: viterbi #hmm
+all: hmm
 
-viterbi.o: viterbi.cpp viterbi.h
-
-viterbi: viterbi.o hmm.o
-	$(LD)  -o $@ $^ $(LDFLAGS)
-
-hmm: hmm2.o
+hmm: hmm.o
 	$(LD)  -o $@ $^ $(LDFLAGS)
 
 clean:
