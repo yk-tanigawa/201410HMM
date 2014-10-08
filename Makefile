@@ -9,7 +9,7 @@ EXEC = $(SRCS:.cpp=)
 RM = rm -f
 
 
-all: viterbi hmm
+all: viterbi #hmm
 
 viterbi.o: viterbi.cpp viterbi.h
 

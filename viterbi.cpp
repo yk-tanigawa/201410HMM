@@ -145,7 +145,7 @@ void viterbi_repeat(hmm *hmm, FILE *data,
 	/* Viterbi変数(log) を計算して，トレースバックをセット*/
 	lv[l] = (hmm -> lemit)[l][c_index] + max;
 	tracebk[l] = max_index;
-        /* viterbi_repeat_debug2(hmm, l, c_index, max, lv); */
+        viterbi_repeat_debug2(hmm, l, c_index, max, lv); 
       }     
 #if 0
       printf("tracebk[] computed : ");
@@ -247,7 +247,7 @@ int viterbi(FILE *params, FILE *data){
 /*
  * 以下debug用関数
  */
-#if 0
+#if 1
 void viterbi_repeat_debug1(int k, int l,
 			     long double temp, long double max,
 			     long double ltrans_kl, long double *lv_before){
