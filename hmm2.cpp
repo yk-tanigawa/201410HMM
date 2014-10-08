@@ -40,6 +40,8 @@ void ary_dump(T *ary, string format, int len){
 
 template <class T>
 void ary_dump_expl(T *ary, string format, int len){
+  /* 配列を表示, 各要素のexplをとってから表示
+   * debug用関数 */
   for(int i = 0; i < len; i++){
     printf(format.c_str(), expl(ary[i]));
   }
@@ -73,17 +75,15 @@ class hmm{
 public:
   int a_size(){ return alph_size; }  
   int s_size(){ return state_size; }  
-  long double get_ltrans(int i, int j){return ltrans[i][j]; }
-  long double get_lemit(int i, int j) {return lemit[i][j];  }
-  long double get_emit(int i, int j) {return emit[i][j];  }
-  void init(int a_size, int s_size){
+  long double get_ltrans(const int i, const int j){return ltrans[i][j]; }
+  long double get_lemit(const int i, const int c) {return lemit[i][c];  }
+  void init(const int a_size, const int s_size){
     /*
      * 構造体hmmのメモリ領域を確保する。
      * 引数には状態数と、アルファベットの数を与える
      * この関数では、callocを行うだけで、
      * パラメータのセットは別の関数で行う。
      */
-    alph   = new char [a_size];
     trans  = new long double * [s_size];
     ltrans = new long double * [s_size];
     emit   = new long double * [s_size];
@@ -130,33 +130,43 @@ public:
     show_matrix(lemit,  "%10Lf", state_size, alph_size);
     return;
   }
+  void destroy(){
+    for(int i = 0; i < state_size; i++){
+      delete [] trans[i]; delete [] ltrans[i]; 
+      delete [] emit[i];  delete [] lemit[i];
+    } 
+    delete [] trans; delete [] ltrans;
+    delete [] emit;  delete [] lemit;
+  }
   friend hmm &params_read(hmm &model, ifstream &ifs);
 };
 
 class viterbi{
   long double *lv;
   long double *lv_before;
-  int *tracebk;
+  int **tracebk;
   int *path;
   int s_size;
   int a_size;
   int length;
   hmm *model;
 public:
-  int init(int l, hmm m){
-    lv        = new long double [m.s_size()];
-    lv_before = new long double [m.s_size()];
-    tracebk   = new int [l];
+  int init(int l, hmm *m){
+    lv        = new long double [m -> s_size()];
+    lv_before = new long double [m -> s_size()];
+    tracebk   = new int * [l];
+    for(int t = 0; t < l; t++){ tracebk[t] = new int [m -> s_size()];}
     path      = new int [l];
-    s_size    = m.s_size();
-    a_size    = m.a_size();
+    s_size    = m -> s_size();
+    a_size    = m -> a_size();
     length    = l;
-    model = &m;
+    model = m;
     return 0;
   }
   ~viterbi(){
     delete [] lv;
     delete [] lv_before;
+    for(int t = 0; t < length; t++){delete [] tracebk[t]; }
     delete [] tracebk;
     delete [] path;
   }
@@ -165,22 +175,24 @@ public:
 };
 
 class job{
-  hmm    model;
+  hmm   *model;
   int   *data;
   int    data_len;
   string data_head;
   long double *forward;
   long double *backward;
 public:
-  void init(hmm &m, string head, int *ary, int len){
-    model = m;   data_head = head;
+  void init(hmm m, string head, int *ary, int len){
+    model = &m;   data_head = head;
     data = ary;  data_len = len;  return;
   }
   ~job(){
-    delete [] data;  return;
+    delete [] data;
+    //model->destroy();
+    return;
   }
   void dump(){ /* job classの内容を表示 */
-    model.dump();
+    model->dump();
     cout << data_head << endl;
     cout << "length : " << data_len << endl;
     for(int i = 0; i < data_len; i++){ cout << data[i];}
@@ -222,8 +234,8 @@ hmm &params_read(hmm &model, ifstream &ifs){
   sscanf(str.c_str(), "%d", &a_size);
   //a_size = stoi(str);
 
-  std::string alphabet;
-  getline_wocomment(comment_ch, ifs, alphabet);
+  string alphabet;
+  getline_wocomment(comment_ch, ifs, alphabet);      
   
   int s_size = -1;
   getline_wocomment(comment_ch, ifs, str);
@@ -231,7 +243,9 @@ hmm &params_read(hmm &model, ifstream &ifs){
   //s_size = stoi(str);
 
   model.init(a_size, s_size);
-  model.alph = alphabet;
+  for(int i = 0; i < alphabet.length(); i++){
+    if(alphabet[i] != ' '){ model.alph += alphabet[i]; }
+  }
 
   /* 状態遷移確率を読み込む */
   for(int i = 0; i < s_size; i++){
@@ -250,6 +264,7 @@ hmm &params_read(hmm &model, ifstream &ifs){
   for(int j = 0; j < a_size; j++){
     model.emit[0][j]  = 0;
     model.lemit[0][j] = logl(0);
+
   }  
   for(int i = 1; i < s_size; i++){
     getline_wocomment(comment_ch, ifs, str);
@@ -290,12 +305,11 @@ int prepare(job &myjob, char *param_file, char *data_file){
   model = params_read(model, param_fs);
   param_fs.close();
 
-  std::string data_str, data_head;
+  string data_str, data_head;
   getline(data_fs, data_head);
   data_str = data_read(data_str, data_fs);
   int *data =  model.data_convert(data_str);  
   
-
   /* job構造体をつくる */
   myjob.init(model, data_head, data, data_str.length());
 
@@ -306,67 +320,56 @@ int viterbi_body(job &j){
   viterbi vit;
   vit.init(j.data_len, j.model);
 
+  /* viterbi変数(log)の初期可 */
   vit.lv[0] = logl(1);
   for(int s = 1; s < vit.s_size; s++){
     vit.lv[s] = logl(0);
   }
 
-  ary_dump_expl(vit.lv, "%Lf", vit.s_size);
-
+  /* アルゴリズム本体を回す */
   for(int t = 0; t < vit.length; t++){
-    /* アルゴリズム本体を回す */
     vit.repeat(t, j.data[t]);
   }
   
   /* trace back をたどる */
   vit.path[vit.length - 1] = find_max_index(vit.lv, vit.s_size);
   for(int t = vit.length - 1; t > 0; t--){
-    vit.path[t - 1] = vit.tracebk[t];
+    vit.path[t - 1] = vit.tracebk[t][vit.path[t]];
   }
 
-#if 1
   /* 結果を表示 */
   for(int t = 0; t < vit.length; t++){
     cout << vit.path[t];
   }
   cout << endl;
-#endif
   return 0;
 }
 
-int viterbi::repeat(int t, int c){
+inline int viterbi::repeat(int t, int c){
   /* アルゴリズムの繰り返しステップ 
    * 時刻tでのviterbi変数(対数)を計算してlvに格納して，
    * traceback pointerをセットする */
-  ary_cpy(lv_before, lv, s_size); /* log viterbi変数をひとつずらす */
-  for(int l = 0; l < s_size; l++){/* 状態が k => l に遷移した */
+  ary_cpy(lv_before, lv, s_size);  /* log viterbi変数をひとつずらす */
+  for(int l = 0; l < s_size; l++){ /* 状態が k => l に遷移した */
     long double max = -1 * INFINITY;
-    long double max_index = -1;
+    int max_index = -1;
     for(int k = 0; k < s_size; k++){
       long double ltrans_kl = model -> get_ltrans(k, l);
       long double temp = lv_before[k] + ltrans_kl;
-      cout << "k = " << k << ", l = " << l << ", " << expl(temp) << endl;
-      if(temp >= max){ max = temp; max_index = k; }
+      if(temp > max){ max = temp; max_index = k; }
     }
-    cout << "max is [" << max_index << "], " << expl(max) << endl;
-    cout << "emittion l > c : " << expl(model -> get_lemit(l, c)) << endl;
-    cout << "emittion l > c : " << model -> get_emit(l, c) << endl;
-
-    lv[l] = max + (model -> get_lemit(l, c)); /* viterbi変数を計算 */
-    cout <<"             t = " << t <<  ", lv[" <<
-      l << "] = " << expl(lv[l]) <<endl;
-    tracebk[l] = max_index; /* trace back ポインタをセット */
+    lv[l] = model->get_lemit(l, c) + max; /* viterbi変数を計算 */
+    tracebk[t][l] = max_index; /* trace back ポインタをセット */
   }
   return 0;
 }
 
 int main(int argc, char *argv[]){
   job myjob;
-  prepare(myjob, (char *)"params2.txt", (char *)"sample-RNA2.fa");
-  myjob.dump();
-
+  prepare(myjob, (char *)"params.txt", (char *)"sample-RNA.fa");
+  //myjob.dump();
   viterbi_body(myjob);
-
+  //myjob.dump();
   return 0;
   //return viterbi_prepare(argv[1], argv[2]);
 }
