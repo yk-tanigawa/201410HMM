@@ -192,13 +192,33 @@ class forward_backward{
   int len;
   int s_size;
   hmm *model;
+  long double forward_chk_calc(const int t_len){
+    /* forward アルゴリズムの動作の確認のため, log( P(x_1..t_len) )を計算 
+     * アルゴリズムの"終了処理"に相当する計算を行う */
+    return scale[t_len];
+  }
+  long double backward_chk_calc(const int t_len){
+    /* backward アルゴリズムの動作の確認のため, log( P(x_t_len..T) )を計算
+     * アルゴリズムの"終了処理"に相当する計算を行う */
+    return scale[t_len - 1] + logl(tbl[t_len - 1][0]);
+  }
 public:
   forward_backward(const class job);
   int forward(const sequence data, int t_len);
   int backward(const sequence data, int t_len);
-  long double calc(int t_len);
-  void show(int t_len);
-  long double get_tbl(int i, int j){ return tbl[i][j];}
+  void forward_chk(){
+    long double lresults = this -> forward_chk_calc(len);
+    cout << "P(X) = " << lresults << ", "<< expl(lresults) << endl;
+    return;
+  }
+  void backward_chk(){
+    long double lresults = this -> backward_chk_calc(1);
+    cout << "P(X) = " << lresults << ", "<< expl(lresults) << endl;
+    return;
+  }
+  /* 以下の2つの関数はforward, backward変数のlogを返す */
+  long double lf(int t, int k){ return log(tbl[t][k]) + scale[t];}
+  long double lb(int t, int k){ return log(tbl[t][k]) + scale[t];}
 };
 
 class sequence{
@@ -341,6 +361,14 @@ sequence *seq_init(string header, int *ary, int length){
   return seq;
 }
 
+sequence **data_read(ifstream &data_fs){
+  /* データファイルに含まれる配列をsequence構造体に入れて,
+   * そのリスト(配列)を返す */
+  /* まだ実装していない */
+  int num_of_files = 0;
+  return 0;
+}
+
 int prepare(job &myjob, char *param_file, char *data_file){
   /* FILE stream を開き，パラメータファイルを読み込む 
    * その後，viterbi本体に投げる */
@@ -446,65 +474,54 @@ int forward_backward::forward(const sequence data, int t_len){
   for(int t = 1; t <= t_len; t++){
     int c = data.array[t - 1]; // 1文字目はary[0]に入っている
     for(int l = 1; l < s_size; l++){
-      volatile long double sum = 0;
+      long double sum = 0;
       for(int k = 0; k < s_size; k++){
-	volatile long double trans_kl = model -> get_trans(k, l);
-	//printf(" k = %Lf, trans = %Lf\n", tbl[t -1][k], trans_kl);
-	sum +=  tbl[t - 1][k] * trans_kl ;
+	sum +=  tbl[t - 1][k] * (model -> get_trans(k, l));
       }
-      //printf("(t = %d, l = %d), sum = %Lf", t, l, sum);
       tbl[t][l] = model -> get_emit(l, c) * sum;
-      //printf(", tbl[%d][%d] = %Lf\n", t, l, tbl[t][l]);
     }
-    /* 規格化する */
+    /* \sum_s tbl[t][s] = 1 と規格化する */
     for(int s = 0; s < s_size; s++){ scale[t] += tbl[t][s]; }
     for(int s = 0; s < s_size; s++){ tbl[t][s] /= scale[t]; }
-    /*scaling factor(log)の和を計算しておく*/
+
+    /* scaling factor(log)の和を計算しておく
+     * scale[t] の中身 は, t = 1..t の各scalig factor の積の対数
+     * 前向きアルゴリズムの終了条件から, これはP(x_1..t) の対数に等しい */
     scale[t] = logl(scale[t]);  scale[t] += scale[t - 1]; 
-    printf("Forward probability (t = %d) = %Lf\n", t, scale[t]);
+    //printf("P(x_1..%d) = %Lf\n", t, expl(scale[t]));
   }
   return 0;
 }
 
 int forward_backward::backward(const sequence data, int t_len){
-  /* forward変数(\forall t, \sum_s tbl[t][s] = 1 と規格化)の初期化 */
-  tbl[t_len][0] = 0; scale[t_len] = logl(1);
-  for(int s = 1; s < s_size; s++){ tbl[t_len][s] = 1; }
+  /* backward変数(\forall t, \sum_s tbl[t][s] = 1 と規格化)の初期化 */
+  tbl[t_len][0] = 0;  scale[t_len] = logl(s_size - 1);
+  for(int s = 1; s < s_size; s++){ tbl[t_len][s] = 1.0 / (s_size - 1); }
 
   /* アルゴリズム本体を回す */
   for(int t = t_len - 1; t >= 0; t--){
-    int c = data.array[t - 1]; // 1文字目はary[0]に入っている
+    int c = data.array[t]; // 1文字目はary[0]に入っている
     for(int k = 0; k < s_size; k++){
-      volatile long double sum = 0;
+      long double sum = 0;
       for(int l = 0; l < s_size; l++){
-	volatile long double trans_kl = model -> get_trans(k, l);
-	volatile long double emit_lc  = model -> get_emit(l,c);
-	sum += trans_kl * emit_lc * tbl[t + 1][l];
-	printf("trans_%d%d = %Lf, ", k, l, trans_kl);
-	printf("emit_%d%d = %Lf, ", l, c, emit_lc);
-	printf(", tbl[%d][%d] = %Lf\n", t + 1, l, tbl[t + 1][l]);
+	sum += expl( (model -> get_ltrans(k, l)) +
+		     (model -> get_lemit(l,c)) +
+		     logl(tbl[t + 1][l]) );
       }
       tbl[t][k] = sum;
-      printf(", tbl[%d][%d] = %Lf\n", t, k, tbl[t][k]);
     }
-    /* 規格化する */
-    for(int s = 0; s < s_size; s++){ scale[t] += tbl[t][s]; }
+    /* \sum_s tbl[t][s] = 1 と規格化する */
+    for(int s = 0; s < s_size; s++){ scale[t] += tbl[t][s];}
     for(int s = 0; s < s_size; s++){ tbl[t][s] /= scale[t]; }
-    /*scaling factor(log)の和を計算しておく*/
+
+    /* scaling factor(log)の和を計算しておく
+     * scale[t] の中身 は, t = t..T の各scalig factor の積の対数
+     * 後ろ向きアルゴリズムの終了条件から, 
+     * P(x_1..t) は e^(scale[t]) * b_0(t) となる */
     scale[t] = logl(scale[t]);  scale[t] += scale[t + 1];
-    printf("Backward probability (t = %d) = %Lf\n", t, scale[t]);
+    //printf("P(x_%d..%d) = %Lf\n", t, t_len, expl(scale[t]) * tbl[t][0] );
   }
   return 0;
-}
-
-inline long double forward_backward::calc(const int t_len){
-  return scale[t_len];
-}
-
-void forward_backward::show(int t_len){
-  long double lresults = this -> calc(t_len);
-  cout << expl(lresults) << ", "<<lresults << endl;
-  return;
 }
 
 int main(int argc, char *argv[]){
@@ -515,16 +532,19 @@ int main(int argc, char *argv[]){
     job myjob;
     prepare(myjob, argv[1], argv[2]);
     //myjob.dump();
+
+    /* Viterbi アルゴリズムの適用 */
     viterbi_body(myjob);
 
+    /* 前向きアルゴリズムの適用 */
     forward_backward forward(myjob);
-    //myjob.dump();
     forward.forward(myjob . get_data(), myjob. get_data() . length());
-    forward.show(myjob . get_data() . length());
+    forward.forward_chk();
 
+    /* 後ろ向きアルゴリズムの適用 */
     forward_backward backward(myjob);
     backward.backward(myjob . get_data(), myjob. get_data() . length());
-    backward.show(0);
+    backward.backward_chk();
 
     myjob.destroy();
     return 0;
