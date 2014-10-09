@@ -21,6 +21,18 @@ void show_matrix(T **matrix, string format, int n, int m){
   return;
 }
 
+template <class T> 
+void show_matrix_expl(T **matrix, string format, int n, int m){
+  for(int i = 0; i < n; i++){
+    for(int j = 0; j < m; j++){
+      printf(format.c_str(), expl(matrix[i][j]));
+    }
+    printf("\n");
+  }
+  return;
+}
+
+
 template <class T>
 void ary_cpy(T *target, const T *source, int len){
   for(int i = 0; i < len; i++){
@@ -61,7 +73,7 @@ int find_max_index(T *ary, int len){
 }
 
 class hmm;
-class data;
+class sequence;
 class job;
 class viterbi;
 class forward_backward;
@@ -89,34 +101,30 @@ public:
   int a_size(){ return alph_size; }  
   int s_size(){ return state_size; }  
   long double get_ltrans(const int i, const int j){return ltrans[i][j]; }
+  long double get_trans(const int i, const int j){return trans[i][j]; }
   long double get_lemit(const int i, const int c) {return lemit[i][c];  }
+  long double get_emit(const int i, const int c) {return emit[i][c];  }
+  int *data_convert(const string str){ /* str のデータをint *に変換 */
+    int *data = new int [str.length()];
+    for(int i = 0; i < str.length(); i++){
+      data[i] = this -> alph_to_digit(str[i]);
+    }
+    return data;
+  }
   void init(const int a_size, const int s_size){
-    /*
-     * 構造体hmmのメモリ領域を確保する。
+    /* 構造体hmmのメモリ領域を確保する。
      * 引数には状態数と、アルファベットの数を与える
-     * この関数では、callocを行うだけで、
-     * パラメータのセットは別の関数で行う。
-     */
-    trans  = new long double * [s_size];
-    ltrans = new long double * [s_size];
-    emit   = new long double * [s_size];
-    lemit  = new long double * [s_size];
+     * この関数では、callocを行うだけでパラメータのセットは別の関数で行う */
+    trans  = new long double * [s_size]; ltrans = new long double * [s_size];
+    emit   = new long double * [s_size]; lemit  = new long double * [s_size];
     for(int i = 0; i < s_size; i++){
       trans[i]  = new long double [s_size];
       ltrans[i] = new long double [s_size];
       emit[i]   = new long double [a_size];
       lemit[i]  = new long double [a_size];
     }
-    state_size = s_size;
-    alph_size = a_size;
+    state_size = s_size; alph_size = a_size;
     return;
-  }
-  int *data_convert(const string str){
-    int *data = new int [str.length()];
-    for(int i = 0; i < str.length(); i++){
-      data[i] = this -> alph_to_digit(str[i]);
-    }
-    return data;
   }
   void dump(){
     /* HMM構造体の内容を表示する */
@@ -141,7 +149,7 @@ public:
     delete [] trans; delete [] ltrans;
     delete [] emit;  delete [] lemit;
   }
-  friend hmm &params_read(hmm &model, ifstream &ifs);
+  friend hmm *params_read(ifstream &ifs);
 };
 
 class viterbi{
@@ -185,53 +193,56 @@ class forward_backward{
   int s_size;
   hmm *model;
 public:
-  forward_backward(job j){
-    len = j.length();
-    s_size = j.model -> state_size;
-    tbl = new long double * [len];
-    for(int t = 0; t < len; t++){
-      tbl[t] = new long double [s_size];
-    }
-    scale = new long double [len];
-  }
-  int forward();
+  forward_backward(const class job);
+  int forward(const sequence data, int t_len);
+  long double forward_calc(int t_len);
+  void forward_show(int t_len);
+  long double get_tbl(int i, int j){ return tbl[i][j];}
 };
 
-class data{
+class sequence{
   int  len;
-public:
   string head;
-  int *ary;
+public:
+  int *array;
+  sequence(){}
+  sequence(string header, int *ary, int length){
+    len = length; head = header; array = ary;
+  }
   int length(){ return len; }
+  string header(){ return head;}
+  int *ary(){ return array; }
+  int ary(int i){ return array[i]; }
+  void dump(){
+    cout << head << endl << "length : " << len << endl;
+    for(int i = 0; i < len; i++){ cout << array[i];}
+    cout <<endl;
+  }
+  void destroy(){
+    delete [] array;
+  }
+  friend sequence *seq_init(string header, int *ary, int length);
 };
 
 class job{
   hmm   *model;
-  int   *data;
-  int    data_len;
-  string data_head;
-  int data_num;
+  sequence *data;
   forward_backward *forward;
   forward_backward *backward;
 public:
-  void init(hmm m, string head, int *ary, int len){
-    model = &m;   data_head = head;
-    data = ary;  data_len = len;  return;
-  }
-  void init(hmm m){ model = &m; }
+  void init(hmm *m, sequence *seq){ model = m; data = seq;}
   void destroy(){
-    delete [] data;
+    data->destroy();
     model->destroy();
     return;
   }
   void dump(){ /* job classの内容を表示 */
     model->dump();
-    cout << data_head << endl;
-    cout << "length : " << data_len << endl;
-    for(int i = 0; i < data_len; i++){ cout << data[i];}
-    cout <<endl;
+    data->dump();
   }
+  sequence get_data(){return *data;}
   friend int viterbi_body(job &j);
+  friend forward_backward::forward_backward(const job j);
 };
 
 vector<string> split(const string &str, char delim);
@@ -259,7 +270,8 @@ istream &getline_wocomment(char c, istream &is, string &str){
   return is;
 }
 
-hmm &params_read(hmm &model, ifstream &ifs){
+hmm *params_read(ifstream &ifs){
+  hmm *model = new hmm;
   string str;
   char comment_ch = '%';
 
@@ -276,9 +288,9 @@ hmm &params_read(hmm &model, ifstream &ifs){
   sscanf(str.c_str(), "%d", &s_size);
   //s_size = stoi(str);
 
-  model.init(a_size, s_size);
+  model->init(a_size, s_size);
   for(int i = 0; i < alphabet.length(); i++){
-    if(alphabet[i] != ' '){ model.alph += alphabet[i]; }
+    if(alphabet[i] != ' '){ model->alph += alphabet[i]; }
   }
 
   /* 状態遷移確率を読み込む */
@@ -288,16 +300,16 @@ hmm &params_read(hmm &model, ifstream &ifs){
     long double input;
     for(int j = 0; j < s_size; j++){
       sscanf((input_str[j]).c_str(), "%Lf", &input);
-      model.trans[i][j] = input;
-      model.ltrans[i][j] = logl(input);
+      model->trans[i][j] = input;
+      model->ltrans[i][j] = logl(input);
     }
   }
 
   /* 出力確率を読み込む 
    * s0の出力確率は0であることに注意。s1から読み込む */
   for(int j = 0; j < a_size; j++){
-    model.emit[0][j]  = 0;
-    model.lemit[0][j] = logl(0);
+    model->emit[0][j]  = 0;
+    model->lemit[0][j] = logl(0);
 
   }  
   for(int i = 1; i < s_size; i++){
@@ -306,8 +318,8 @@ hmm &params_read(hmm &model, ifstream &ifs){
     long double input;
     for(int j = 0; j < a_size; j++){
       sscanf((input_str[j]).c_str(), "%Lf", &input);
-      model.emit[i][j]  = input;
-      model.lemit[i][j] = logl(input);
+      model->emit[i][j]  = input;
+      model->lemit[i][j] = logl(input);
     }
   }
   return model;
@@ -318,6 +330,14 @@ std::string &data_read(string &data, ifstream &ifs){
   std::string str;
   while(getline(ifs, str)){ data += str; }
   return data;
+}
+
+sequence *seq_init(string header, int *ary, int length){
+  sequence *seq = new sequence;
+  seq -> len = length;  seq -> head = header;
+  seq -> array = new int [length];
+  for(int i = 0; i < length; i++){(seq -> array)[i] = ary[i];}
+  return seq;
 }
 
 int prepare(job &myjob, char *param_file, char *data_file){
@@ -335,24 +355,30 @@ int prepare(job &myjob, char *param_file, char *data_file){
     return EXIT_FAILURE;
   }
 
-  hmm model;
-  model = params_read(model, param_fs);
+  /* hmm を構成 */
+  hmm *model = params_read(param_fs);
   param_fs.close();
-
+  
+  /* データを読み込む */
   string data_str, data_head;
   getline(data_fs, data_head);
   data_str = data_read(data_str, data_fs);
-  int *data =  model.data_convert(data_str);  
-  
+  int *data =  model -> data_convert(data_str);
+  /* 読み込んだ文字列をintの配列に変換 */
+  data_fs.close();
+
+  /* sequence構造体をつくる */
+  sequence *seq_data = seq_init(data_head, data, data_str.length());
+
   /* job構造体をつくる */
-  myjob.init(model, data_head, data, data_str.length());
+  myjob.init(model, seq_data);
 
   return EXIT_SUCCESS;
 }
 
 int viterbi_body(job &j){
   viterbi vit;
-  vit.init(j.data_len, j.model);
+  vit.init(j.data->length(), j.model);
 
   /* viterbi変数(log)の初期可 */
   vit.lv[0] = logl(1);
@@ -362,7 +388,7 @@ int viterbi_body(job &j){
 
   /* アルゴリズム本体を回す */
   for(int t = 0; t < vit.length; t++){
-    vit.repeat(t, j.data[t]);
+    vit.repeat(t, (j.data->ary())[t]);
   }
   
   /* trace back をたどる */
@@ -398,27 +424,59 @@ inline int viterbi::repeat(int t, int c){
   return 0;
 }
 
+forward_backward::forward_backward(const job j){
+  len = j.data->length();
+  s_size = j.model -> s_size();
+  tbl = new long double * [len + 1];
+  for(int t = 0; t < len + 1; t++){
+    tbl[t] = new long double [s_size];
+    for(int s = 0; s  < s_size ; s++){ tbl[t][s] = 0; }
+  }
+  scale = new long double [len + 1];
+  for(int t = 0; t < len + 1; t++){ scale[t] = 0; }
+  model = j.model;
+}
 
-int forward_backward::forward(){
-  /* forward変数(log)の初期可 */
-  tbl[0][0] = logl(1); scale[0] = 1.0;
+int forward_backward::forward(const sequence data, int t_len){
+  /* forward変数(\forall t, \sum_s tbl[t][s] = 1 と規格化)の初期化 */
+  tbl[0][0] = 1; scale[0] = logl(1);
   for(int s = 1; s < s_size; s++){
-    tbl[0][s] = logl(0);
+    tbl[0][s] = 0;
   }
-
   /* アルゴリズム本体を回す */
-  for(int t = 0; t < len; t++){
-    for(int l = 0; l < s_size; l++){
-      long double sum = 0;
+  for(int t = 1; t <= t_len; t++){
+    int c = data.array[t - 1]; // 1文字目はary[0]に入っている
+    for(int l = 1; l < s_size; l++){
+      volatile long double sum = 0;
       for(int k = 0; k < s_size; k++){
-	sum += expl(tbl[t - 1][k] + model -> get_ltrans(l, c));
+	volatile long double trans_kl = model -> get_trans(k, l);
+	//printf(" k = %Lf, trans = %Lf\n", tbl[t -1][k], trans_kl);
+	sum +=  tbl[t - 1][k] * trans_kl ;
       }
+      //printf("(t = %d, l = %d), sum = %Lf", t, l, sum);
+      tbl[t][l] = model -> get_emit(l, c) * sum;
+      //printf(", tbl[%d][%d] = %Lf\n", t, l, tbl[t][l]);
     }
+    for(int s = 0; s < s_size; s++){ scale[t] += tbl[t][s]; }
+    for(int s = 0; s < s_size; s++){ /* 規格化して対数をとる */
+      tbl[t][s] /= scale[t];
+    }
+    scale[t] = logl(scale[t]);
+    scale[t] += scale[t - 1]; /* この操作により，これが前向き確率そのもの */
+    //printf("Forward probability (t = %d) = %Lf\n", t, scale[t]);
   }
-
   return 0;
 }
 
+long double forward_backward::forward_calc(const int t_len){
+  return scale[t_len];
+}
+
+void forward_backward::forward_show(int t_len){
+  long double lresults = this -> forward_calc(t_len);
+  cout << expl(lresults) << ", "<<lresults << endl;
+  return;
+}
 
 int main(int argc, char *argv[]){
   if(argc < 2){
@@ -426,15 +484,16 @@ int main(int argc, char *argv[]){
     return EXIT_FAILURE;
   }else{
     job myjob;
-    prepare(myjob, (char *)"params.txt", (char *)"sample-RNA.fa");
+    prepare(myjob, argv[1], argv[2]);
     //myjob.dump();
     viterbi_body(myjob);
 
     forward_backward forward(myjob);
-    forward.forward();
-
 
     //myjob.dump();
+    forward.forward(myjob . get_data(), myjob. get_data() . length());
+    forward.forward_show(myjob . get_data() . length());
+
     myjob.destroy();
     return 0;
   }

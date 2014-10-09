@@ -1,6 +1,6 @@
 CC = g++
 LD = g++
-CFLAGS = -Wall -lm  #-O2
+CFLAGS = -Wall -lm  -O0
 LDFLAGS = -lm #-lpthread
 SRCS := $(wildcard *.cpp) # wildcard
 OBJS = $(SRCS:.cpp=.o)
