@@ -32,7 +32,6 @@ void show_matrix_expl(T **matrix, string format, int n, int m){
   return;
 }
 
-
 template <class T>
 void ary_cpy(T *target, const T *source, int len){
   for(int i = 0; i < len; i++){
@@ -189,9 +188,7 @@ public:
 class forward_backward{
   long double **tbl; /*logをとった後の値を保存*/
   long double *scale;
-  int len;
-  int s_size;
-  hmm *model;
+  int len; int s_size; hmm *model;
   long double forward_chk_calc(const int t_len){
     /* forward アルゴリズムの動作の確認のため, log( P(x_1..t_len) )を計算 
      * アルゴリズムの"終了処理"に相当する計算を行う */
@@ -208,17 +205,17 @@ public:
   int backward(const sequence data, int t_len);
   void forward_chk(){
     long double lresults = this -> forward_chk_calc(len);
-    cout << "P(X) = " << lresults << ", "<< expl(lresults) << endl;
+    cout << "P(X) = " << lresults << ", "<< expl(lresults) << " (forward)" << endl;
     return;
   }
   void backward_chk(){
     long double lresults = this -> backward_chk_calc(1);
-    cout << "P(X) = " << lresults << ", "<< expl(lresults) << endl;
+    cout << "P(X) = " << lresults << ", "<< expl(lresults) << " (backward)" << endl;
     return;
   }
   /* 以下の2つの関数はforward, backward変数のlogを返す */
-  long double lf(int t, int k){ return log(tbl[t][k]) + scale[t];}
-  long double lb(int t, int k){ return log(tbl[t][k]) + scale[t];}
+  long double lf(int t, int k){ return log(tbl[t][k]) + scale[t]; }
+  long double lb(int t, int k){ return log(tbl[t][k]) + scale[t]; }
 };
 
 class sequence{
@@ -261,6 +258,9 @@ public:
     model->dump();
     data->dump();
   }
+  void set_forward_backward(forward_backward *f, forward_backward *b){
+    forward = f;  backward = b;  return;
+  }
   sequence get_data(){return *data;}
   friend int viterbi_body(job &j);
   friend forward_backward::forward_backward(const job j);
@@ -285,8 +285,11 @@ istream &getline_wocomment(char c, istream &is, string &str){
   /* getlineを行ってコメントを削除する。
    * char c以降をコメントとみなす。*/
   getline(is, str);
-  int comment_start = str.find(c);
-  if(comment_start >= 0)
+  int comment_start;
+  while((comment_start= str.find(c)) == 0){
+    getline(is, str);
+  }
+  if(comment_start > 0)
     str.erase(comment_start);
   return is;
 }
@@ -545,6 +548,9 @@ int main(int argc, char *argv[]){
     forward_backward backward(myjob);
     backward.backward(myjob . get_data(), myjob. get_data() . length());
     backward.backward_chk();
+
+    /* jobにforward, backward の情報を入れる */
+    myjob.set_forward_backward(&forward, &backward);
 
     myjob.destroy();
     return 0;
