@@ -17,5 +17,9 @@ hmm: hmm.o
 clean:
 	$(RM) $(OBJS) $(EXEC) *~
 
-.PHONY:
+check-syntax:
+	$(CC) -Wall -Wextra -pedantic -fsyntax-only $(CHK_SOURCES)
+
+.PHONY: clean 
 	all clean
+

@@ -5,6 +5,7 @@
 #include <vector>
 #include <cmath>
 #include <cstdlib>
+#include <boost/algorithm/string.hpp>
 
 using namespace std;
 
@@ -103,6 +104,12 @@ public:
   long double get_trans(const int i, const int j){return trans[i][j]; }
   long double get_lemit(const int i, const int c) {return lemit[i][c];  }
   long double get_emit(const int i, const int c) {return emit[i][c];  }
+  void replace_trans(const int i, const int j, long double ltij){
+    ltrans[i][j] = ltij; trans[i][j]  = expl(ltij); return;
+  }
+  void replace_emit(const int i, const int c, long double leic){
+    lemit[i][c] = leic; emit[i][c]  = expl(leic); return;
+  }
   int *data_convert(const string str){ /* str のデータをint *に変換 */
     int *data = new int [str.length()];
     for(int i = 0; i < str.length(); i++){
@@ -148,6 +155,7 @@ public:
     delete [] trans; delete [] ltrans;
     delete [] emit;  delete [] lemit;
   }
+  vector <sequence *> get_data(ifstream &data_fs);
   friend hmm *params_read(ifstream &ifs);
 };
 
@@ -182,7 +190,7 @@ public:
     delete [] path;
   }
   int repeat(int t, int c);
-  friend int viterbi_body(job &j);
+  friend int viterbi_body(job &j, int i);
 };
 
 class forward_backward{
@@ -200,7 +208,7 @@ class forward_backward{
     return scale[t_len - 1] + logl(tbl[t_len - 1][0]);
   }
 public:
-  forward_backward(const class job);
+  void init(const class job, int i);
   int forward(const sequence data, int t_len);
   int backward(const sequence data, int t_len);
   void forward_chk(){
@@ -216,6 +224,10 @@ public:
   /* 以下の2つの関数はforward, backward変数のlogを返す */
   long double lf(int t, int k){ return log(tbl[t][k]) + scale[t]; }
   long double lb(int t, int k){ return log(tbl[t][k]) + scale[t]; }
+  /* P(x) を返す */
+  long double lp_x(){
+    return forward_chk_calc(len);
+  }
 };
 
 class sequence{
@@ -244,30 +256,57 @@ public:
 
 class job{
   hmm   *model;
-  sequence *data;
-  forward_backward *forward;
-  forward_backward *backward;
+  vector <sequence *> data;
+  vector <forward_backward> *forward_all;
+  vector <forward_backward> *backward_all;
 public:
-  void init(hmm *m, sequence *seq){ model = m; data = seq;}
+  void init(hmm *m, vector <sequence *> seq){
+    model = m; data = seq;
+  }
   void destroy(){
-    data->destroy();
+    for(int i = 0; i < data.size(); i++){
+      (data.at(i))->destroy();
+    }
     model->destroy();
     return;
   }
   void dump(){ /* job classの内容を表示 */
     model->dump();
-    data->dump();
+    for(int i = 0; i < data.size(); i++){
+      (data.at(i))->dump();
+    }
   }
-  void set_forward_backward(forward_backward *f, forward_backward *b){
-    forward = f;  backward = b;  return;
+  void show_seq_head(int i){
+    cout << data.at(i) -> header() << endl;
   }
-  sequence get_data(){return *data;}
-  friend int viterbi_body(job &j);
-  friend forward_backward::forward_backward(const job j);
+  void set_forward_backward(vector <forward_backward> f,
+			    vector <forward_backward> b){
+    forward_all = &f;  backward_all = &b;  return;
+  }
+  hmm * get_model(){ return model; }
+  sequence get_data(int i){return *(data.at(i));}
+  int num_of_data(){ return data.size(); }
+  vector <forward_backward> *get_backward_all(){
+    return backward_all; }
+  vector <forward_backward> *get_forward_all(){
+    return forward_all; }
+  forward_backward get_forward(int i){
+    return (forward_all -> at(i)); }
+  forward_backward get_backward(int i){
+    return (backward_all -> at(i)); }
+  long double lp_x(int j){ return get_forward(j) . lp_x(); }
+  friend int viterbi_body(job &j, int i);
+  friend void forward_backward::init(const job j, int i);
 };
 
 vector<string> split(const string &str, char delim);
 istream &getline_wocomment(char c, istream &is, string &str);
+
+void baum_welch_Mstep(job &myjob, long double **lakl, long double **lekb);
+long double calc_lAkl(job &myjob, int k, int l);
+long double calc_lEkb(job &myjob, int k, int b);
+void baum_welch_Estep(job &myjob, long double **lakl, long double **lekb);
+void baum_welch(job &myjob);
 
 
 vector<string> split(const string &str, char delim){
@@ -306,6 +345,7 @@ hmm *params_read(ifstream &ifs){
 
   string alphabet;
   getline_wocomment(comment_ch, ifs, alphabet);      
+  boost::to_upper(alphabet);
   
   int s_size = -1;
   getline_wocomment(comment_ch, ifs, str);
@@ -349,13 +389,6 @@ hmm *params_read(ifstream &ifs){
   return model;
 }
 
-
-std::string &data_read(string &data, ifstream &ifs){
-  std::string str;
-  while(getline(ifs, str)){ data += str; }
-  return data;
-}
-
 sequence *seq_init(string header, int *ary, int length){
   sequence *seq = new sequence;
   seq -> len = length;  seq -> head = header;
@@ -364,17 +397,37 @@ sequence *seq_init(string header, int *ary, int length){
   return seq;
 }
 
-sequence **data_read(ifstream &data_fs){
-  /* データファイルに含まれる配列をsequence構造体に入れて,
-   * そのリスト(配列)を返す */
-  /* まだ実装していない */
-  int num_of_files = 0;
-  return 0;
+vector <sequence *> hmm::get_data(ifstream &data_fs){
+  /* データファイルに含まれる配列をsequence構造体のリストとして返す */
+  vector<sequence *> data;
+  string head, data_str, buf;
+
+  while(getline(data_fs, buf)){
+    if(buf[0] == '>'){
+      /* 新しい配列の情報が始まった */
+      if(data_str.length() > 0){
+	/* 一つ前の配列の情報があるとき，それをvectorに格納する */
+	data.push_back(seq_init(head, 
+				data_convert(data_str), 
+				data_str.length()));
+      }
+      head.erase();  head = buf; /* 次のヘッダー */
+      data_str.erase(); /* 配列情報を破棄 */
+    }else{ /* 前の配列の続き */
+      data_str += buf;
+    }
+  }
+  if(data_str.length() > 0){
+    /* 一つ前の配列の情報があるとき，それをvectorに格納する */
+    data.push_back(seq_init(head, data_convert(data_str), 
+			    data_str.length()));
+  }
+  return data;
 }
 
 int prepare(job &myjob, char *param_file, char *data_file){
   /* FILE stream を開き，パラメータファイルを読み込む 
-   * その後，viterbi本体に投げる */
+   * job構造体に情報を書き込む */
 
   std::ifstream param_fs(param_file);
   if (param_fs.fail()){
@@ -390,17 +443,10 @@ int prepare(job &myjob, char *param_file, char *data_file){
   /* hmm を構成 */
   hmm *model = params_read(param_fs);
   param_fs.close();
-  
-  /* データを読み込む */
-  string data_str, data_head;
-  getline(data_fs, data_head);
-  data_str = data_read(data_str, data_fs);
-  int *data =  model -> data_convert(data_str);
-  /* 読み込んだ文字列をintの配列に変換 */
-  data_fs.close();
 
-  /* sequence構造体をつくる */
-  sequence *seq_data = seq_init(data_head, data, data_str.length());
+  /* データを読み込む */  
+  vector <sequence *> seq_data = model -> get_data(data_fs);
+  data_fs.close();
 
   /* job構造体をつくる */
   myjob.init(model, seq_data);
@@ -408,11 +454,11 @@ int prepare(job &myjob, char *param_file, char *data_file){
   return EXIT_SUCCESS;
 }
 
-int viterbi_body(job &j){
+int viterbi_body(job &j, int i){
   viterbi vit;
-  vit.init(j.data->length(), j.model);
+  vit.init((j.data).at(i)->length(), j.model);
 
-  /* viterbi変数(log)の初期可 */
+  /* viterbi変数(log)の初期化 */
   vit.lv[0] = logl(1);
   for(int s = 1; s < vit.s_size; s++){
     vit.lv[s] = logl(0);
@@ -420,7 +466,7 @@ int viterbi_body(job &j){
 
   /* アルゴリズム本体を回す */
   for(int t = 0; t < vit.length; t++){
-    vit.repeat(t, (j.data->ary())[t]);
+    vit.repeat(t, ((j.data).at(i)->ary())[t]);
   }
   
   /* trace back をたどる */
@@ -456,17 +502,18 @@ inline int viterbi::repeat(int t, int c){
   return 0;
 }
 
-forward_backward::forward_backward(const job j){
-  len = j.data->length();
+void forward_backward::init(job j, int i){
+  len = (j.get_data(i)).length();
   s_size = j.model -> s_size();
-  tbl = new long double * [len + 2];
-  for(int t = 0; t < len + 2; t++){
+  tbl = new long double * [len + 1];
+  for(int t = 0; t < len + 1; t++){
     tbl[t] = new long double [s_size];
     for(int s = 0; s  < s_size ; s++){ tbl[t][s] = 0; }
   }
-  scale = new long double [len + 2];
-  for(int t = 0; t < len + 2; t++){ scale[t] = 0; }
+  scale = new long double [len + 1];
+  for(int t = 0; t < len + 1; t++){ scale[t] = 0; }
   model = j.model;
+  return;
 }
 
 int forward_backward::forward(const sequence data, int t_len){
@@ -527,6 +574,108 @@ int forward_backward::backward(const sequence data, int t_len){
   return 0;
 }
 
+long double calc_lAkl(job &myjob, int k, int l){
+  /* Baum Welch で log a_kl (transition prob.) を学習データから推定 */
+  long double sum_j = 0;
+  for(int j = 0; j < myjob.num_of_data(); j++){
+    long double sum_t = 0;
+    for(int t = 0; t < myjob.get_data(j).length() - 1 ; t++){
+      long double sum_log = 0;
+      sum_log += myjob.get_forward(j)  . lf(t, k);
+      sum_log += myjob.get_model()->get_ltrans( k, l );
+      sum_log += myjob.get_model()->get_lemit(l, myjob.get_data(j).array[t]);
+      sum_log += myjob.get_backward(j) . lb(t + 1, l);
+      sum_t = expl(sum_log);
+    }
+    sum_t -= myjob.lp_x(j);
+    sum_j += sum_t;
+  }
+  return sum_j; /* log(A_kl) に相当 */
+}
+
+
+long double calc_lEkb(job &myjob, int k, int b){
+  /* Baum Welch で log e_k(b) (emittion prob.) を学習データから推定 */
+  long double sum_j = 0;
+  for(int j = 0; j < myjob.num_of_data(); j++){
+    long double sum_t = 0;
+    for(int t = 0; t < myjob.get_data(j).length(); t++){
+      if(myjob.get_data(j).array[t] == b){
+	sum_t += expl( myjob.get_forward(j) . lf(t, k) +
+		       myjob.get_backward(j). lb(t, k)  );
+      }
+    }
+    sum_t -= myjob.lp_x(j);
+    sum_j += sum_t;
+  }
+  return sum_j; /* log(E_k(b)) に相当 */
+}
+
+void baum_welch_Mstep(job &myjob, long double **lAkl, long double **lEkb){
+  /* パラメータの最尤推定 */
+  int state_size = myjob.get_model()->s_size();
+  int alphabet_size = myjob.get_model()->a_size();
+  for(int k = 0; k < state_size; k++){
+    for(int l = 0; l < state_size; l++){
+      myjob.get_model()->replace_trans(k, l,
+				       lAkl[k][l] - lAkl[k][state_size]);
+    }
+    for(int b = 0; b < alphabet_size; b++){
+      myjob.get_model()->replace_emit(k, b,
+				      lEkb[k][b] - lEkb[k][alphabet_size]);
+    }
+  }
+  return;
+}
+
+void baum_welch_Estep(job &myjob, long double **lAkl, long double **lEkb){
+  /* 期待値計算 */
+  int state_size = myjob.get_model()->s_size();
+  int alphabet_size = myjob.get_model()->a_size();
+  for(int k = 0; k < state_size; k++){
+    for(int l = 0; l < state_size; l++){
+      lAkl[k][l] = calc_lAkl(myjob, k, l);
+      lAkl[k][state_size] = expl(lAkl[k][l]);
+    }
+    lAkl[k][state_size] = logl(lAkl[k][state_size]); /* 行の和 */
+    for(int b = 0; b < alphabet_size; b++){
+      lEkb[k][b] = calc_lEkb(myjob, k, b);
+      lEkb[k][alphabet_size] = expl(lEkb[k][b]);
+    }
+    lEkb[k][alphabet_size] = logl(lEkb[k][alphabet_size]); /* 行の和 */
+  }
+  return; /* Mステップで利用するために行の和を計算した */
+}
+
+long double calc_lpx_sum(job &myjob){
+  long double logsum = 0;
+  for(int j = 0; j < myjob.num_of_data(); j++){
+    logsum += myjob.lp_x(j);
+  }
+  return logsum;
+}
+
+void baum_welch(job &myjob){
+  long double **lAkl = new long double * [myjob.get_model()->s_size()];
+  long double **lEkb = new long double * [myjob.get_model()->s_size()];
+  for(int k = 0; k < myjob.get_model()->s_size(); k++){
+    lAkl[k] = new long double [myjob.get_model()->s_size() + 1];
+    lEkb[k] = new long double [myjob.get_model()->a_size() + 1];
+    /* (+ 1) してあるのは, 行成分の和を計算して格納するため */
+  }
+
+  /* EM algorithm */
+  baum_welch_Estep(myjob, lAkl, lEkb);
+  baum_welch_Mstep(myjob, lAkl, lEkb);
+
+  for(int k = 0; k < myjob.get_model()->s_size(); k++){
+    delete [] lAkl[k]; delete [] lEkb[k];
+  }
+  delete [] lAkl; delete [] lEkb;
+
+  return;
+}
+
 int main(int argc, char *argv[]){
   if(argc < 2){
     cerr << "usage: $" << argv[0] << " <parameter file> <FASTA file>" << endl;
@@ -536,21 +685,77 @@ int main(int argc, char *argv[]){
     prepare(myjob, argv[1], argv[2]);
     //myjob.dump();
 
-    /* Viterbi アルゴリズムの適用 */
-    viterbi_body(myjob);
+    /* 前向き・後ろ向きの実行準備 */
+    vector <forward_backward> forward_all;
+    vector <forward_backward> backward_all;
+    for(int i = 0; i < myjob.num_of_data(); i++){
+      forward_backward forward;
+      forward.init(myjob, i);
+      forward_all.push_back(forward);
+      
+      forward_backward backward;
+      backward.init(myjob, i);
+      backward_all.push_back(backward);
+    }
 
-    /* 前向きアルゴリズムの適用 */
-    forward_backward forward(myjob);
-    forward.forward(myjob . get_data(), myjob. get_data() . length());
-    forward.forward_chk();
+    /* jobにforward, backward へのポインタを入れる */
+    myjob.set_forward_backward(forward_all, backward_all);
 
-    /* 後ろ向きアルゴリズムの適用 */
-    forward_backward backward(myjob);
-    backward.backward(myjob . get_data(), myjob. get_data() . length());
-    backward.backward_chk();
+#if 0
+    for(int i = 0; i < myjob.num_of_data(); i++){
+      /* 前向きアルゴリズムの適用 */
+      forward_all.at(i)  . forward(  myjob.get_data(i),
+				     myjob.get_data(i).length());
+      /* 後ろ向きアルゴリズムの適用 */
+      backward_all.at(i) . backward( myjob.get_data(i),
+				     myjob.get_data(i).length());
+    }
+    long double lpxsum = calc_lpx_sum(myjob);
+    cout << "init :" << lpxsum << endl;
+    long double lpxsum_before ;
+    for(int loop = 0; loop < 10; loop++){
+      
+      baum_welch(myjob);
 
-    /* jobにforward, backward の情報を入れる */
-    myjob.set_forward_backward(&forward, &backward);
+    for(int i = 0; i < myjob.num_of_data(); i++){
+      /* 前向きアルゴリズムの適用 */
+      forward_all.at(i)  . forward(  myjob.get_data(i),
+				     myjob.get_data(i).length());
+      /* 後ろ向きアルゴリズムの適用 */
+      backward_all.at(i) . backward( myjob.get_data(i),
+				     myjob.get_data(i).length());
+    }
+
+      lpxsum_before = lpxsum;
+      lpxsum = calc_lpx_sum(myjob);
+      cout << "loop (" << loop << ") :" << lpxsum << endl;
+    }
+
+#endif
+
+
+
+    // 下記にあるのはBaum-Welchを入れる前の状態
+#if 1
+    for(int i = 0; i < myjob.num_of_data(); i++){
+      /* 前向きアルゴリズムの適用 */
+      forward_all.at(i)  . forward(  myjob.get_data(i),
+				     myjob.get_data(i).length());
+      //forward_all.at(i)  . forward_chk();
+
+      /* 後ろ向きアルゴリズムの適用 */
+      backward_all.at(i) . backward( myjob.get_data(i),
+				     myjob.get_data(i).length());
+      //backward_all.at(i) . backward_chk();
+    }
+
+    //    baum_welch(myjob);
+#endif
+    for(int i = 0; i < myjob.num_of_data(); i++){
+      myjob.show_seq_head(i);
+      /* Viterbi アルゴリズムの適用 */
+      viterbi_body(myjob, i);
+    }
 
     myjob.destroy();
     return 0;
