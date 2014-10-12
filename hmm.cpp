@@ -282,6 +282,12 @@ public:
     forward_all = f;  backward_all = b;  return;
   }
   hmm * get_model(){ return model; }
+  void model_replace_trans(int k, int l , long double newtranskl){
+    model->replace_trans(k, l, newtranskl);
+  }
+  void model_replace_emit(int k, int c , long double newemitkc){
+    model->replace_emit(k, c, newemitkc);
+  }
   sequence get_data(int i){return *(data.at(i));}
   int num_of_data(){ return data.size(); }
   vector <forward_backward> *get_backward_all(){
@@ -615,16 +621,29 @@ void baum_welch_Mstep(job &myjob, long double **lAkl, long double **lEkb){
   /* パラメータの最尤推定 */
   int state_size = myjob.get_model()->s_size();
   int alphabet_size = myjob.get_model()->a_size();
+  cout << "Mの中。まえ。" << endl;
+  myjob.dump();
+
   for(int k = 0; k < state_size; k++){
     for(int l = 0; l < state_size; l++){
+      cout << lAkl[k][l]<< endl;
+      //myjob.model_replace_trans(k, l, lAkl[k][l] - lAkl[k][state_size]);
+#if 0
       myjob.get_model()->replace_trans(k, l,
 				       lAkl[k][l] - lAkl[k][state_size]);
+#endif
     }
     for(int b = 0; b < alphabet_size; b++){
+      //myjob.model_replace_emit(k, b, lEkb[k][b] - lEkb[k][alphabet_size]);
+#if 0
       myjob.get_model()->replace_emit(k, b,
 				      lEkb[k][b] - lEkb[k][alphabet_size]);
+#endif
     }
   }
+  cout << "Mの中。あと。" << endl;
+  myjob.dump();
+
   return;
 }
 
@@ -663,11 +682,9 @@ void baum_welch(job &myjob){
     lEkb[k] = new long double [myjob.get_model()->a_size() + 1];
     /* (+ 1) してあるのは, 行成分の和を計算して格納するため */
   }
-
   /* EM algorithm */
   baum_welch_Estep(myjob, lAkl, lEkb);
   baum_welch_Mstep(myjob, lAkl, lEkb);
-
   for(int k = 0; k < myjob.get_model()->s_size(); k++){
     delete [] lAkl[k]; delete [] lEkb[k];
   }
@@ -716,26 +733,23 @@ int main(int argc, char *argv[]){
     long double lpxsum = calc_lpx_sum(myjob);
     cout << "init :" << lpxsum << endl;
     long double lpxsum_before ;
-#if 0
-    for(int loop = 0; loop < 10; loop++){
 
+    for(int loop = 0; loop < 1; loop++){
       baum_welch(myjob);
-
-    for(int i = 0; i < myjob.num_of_data(); i++){
-      /* 前向きアルゴリズムの適用 */
-      forward_all.at(i)  . forward(  myjob.get_data(i),
-				     myjob.get_data(i).length());
-      /* 後ろ向きアルゴリズムの適用 */
-      backward_all.at(i) . backward( myjob.get_data(i),
-				     myjob.get_data(i).length());
-    }
+      for(int i = 0; i < myjob.num_of_data(); i++){
+	/* 前向きアルゴリズムの適用 */
+	forward_all.at(i)  . forward(  myjob.get_data(i),
+				       myjob.get_data(i).length());
+	/* 後ろ向きアルゴリズムの適用 */
+	backward_all.at(i) . backward( myjob.get_data(i),
+				       myjob.get_data(i).length());
+      }
 
       lpxsum_before = lpxsum;
       lpxsum = calc_lpx_sum(myjob);
       cout << "loop (" << loop << ") :" << lpxsum << endl;
     }
 
-#endif
 
 
 #if 0
