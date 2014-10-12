@@ -113,7 +113,7 @@ public:
   int *data_convert(const string str){ /* str のデータをint *に変換 */
     int *data = new int [str.length()];
     for(int i = 0; i < str.length(); i++){
-      data[i] = this -> alph_to_digit(str[i]);
+      data[i] = this -> alph_to_digit(toupper(str[i]));
     }
     return data;
   }
@@ -225,9 +225,7 @@ public:
   long double lf(int t, int k){ return log(tbl[t][k]) + scale[t]; }
   long double lb(int t, int k){ return log(tbl[t][k]) + scale[t]; }
   /* P(x) を返す */
-  long double lp_x(){
-    return forward_chk_calc(len);
-  }
+  long double lp_x(){return forward_chk_calc(len);}
 };
 
 class sequence{
@@ -279,9 +277,9 @@ public:
   void show_seq_head(int i){
     cout << data.at(i) -> header() << endl;
   }
-  void set_forward_backward(vector <forward_backward> f,
-			    vector <forward_backward> b){
-    forward_all = &f;  backward_all = &b;  return;
+  void set_forward_backward(vector <forward_backward> *f,
+			    vector <forward_backward> *b){
+    forward_all = f;  backward_all = b;  return;
   }
   hmm * get_model(){ return model; }
   sequence get_data(int i){return *(data.at(i));}
@@ -294,7 +292,9 @@ public:
     return (forward_all -> at(i)); }
   forward_backward get_backward(int i){
     return (backward_all -> at(i)); }
-  long double lp_x(int j){ return get_forward(j) . lp_x(); }
+  long double lp_x(int j){
+    return get_forward(j) . lp_x(); 
+  }
   friend int viterbi_body(job &j, int i);
   friend void forward_backward::init(const job j, int i);
 };
@@ -678,7 +678,8 @@ void baum_welch(job &myjob){
 
 int main(int argc, char *argv[]){
   if(argc < 2){
-    cerr << "usage: $" << argv[0] << " <parameter file> <FASTA file>" << endl;
+    cerr << "usage: $" << argv[0] 
+	 << " <parameter file> <FASTA file>" << endl;
     return EXIT_FAILURE;
   }else{
     job myjob;
@@ -699,9 +700,9 @@ int main(int argc, char *argv[]){
     }
 
     /* jobにforward, backward へのポインタを入れる */
-    myjob.set_forward_backward(forward_all, backward_all);
+    myjob.set_forward_backward(&forward_all, &backward_all);
 
-#if 0
+
     for(int i = 0; i < myjob.num_of_data(); i++){
       /* 前向きアルゴリズムの適用 */
       forward_all.at(i)  . forward(  myjob.get_data(i),
@@ -710,11 +711,14 @@ int main(int argc, char *argv[]){
       backward_all.at(i) . backward( myjob.get_data(i),
 				     myjob.get_data(i).length());
     }
+
+
     long double lpxsum = calc_lpx_sum(myjob);
     cout << "init :" << lpxsum << endl;
     long double lpxsum_before ;
+#if 0
     for(int loop = 0; loop < 10; loop++){
-      
+
       baum_welch(myjob);
 
     for(int i = 0; i < myjob.num_of_data(); i++){
@@ -734,9 +738,8 @@ int main(int argc, char *argv[]){
 #endif
 
 
-
+#if 0
     // 下記にあるのはBaum-Welchを入れる前の状態
-#if 1
     for(int i = 0; i < myjob.num_of_data(); i++){
       /* 前向きアルゴリズムの適用 */
       forward_all.at(i)  . forward(  myjob.get_data(i),
@@ -748,9 +751,9 @@ int main(int argc, char *argv[]){
 				     myjob.get_data(i).length());
       //backward_all.at(i) . backward_chk();
     }
-
     //    baum_welch(myjob);
 #endif
+
     for(int i = 0; i < myjob.num_of_data(); i++){
       myjob.show_seq_head(i);
       /* Viterbi アルゴリズムの適用 */
