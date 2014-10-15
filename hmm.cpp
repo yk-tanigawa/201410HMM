@@ -42,6 +42,7 @@ public:
   void forward(hmm *);
   void backward(hmm *);
   long double lpx(int);
+  long double lpx2(int);
 #if 0
   int len()     { return length; }
   string head() { return header; }
@@ -256,10 +257,8 @@ int main(int argc, char *argv[]){
     //myjob -> viterbi();
     //myjob -> viterbi_dump();
     myjob -> forback_prep();
-    cout << "hello !" << endl;
     myjob -> forward();
     myjob -> backward();
-    cout << "hello !" << endl;
     myjob -> lpx_dump();
   }
 }
@@ -335,8 +334,12 @@ void job::viterbi_dump(){
 
 void job::lpx_dump(){
   for(int i = 0; i < data.size(); i++){
-    cout << "log( P(x^" <<i << ")) = " 
-	 << (data.at(i))->lpx(model -> s_size)  << endl;
+    cout << "log( P(x^" <<i << ") ) = " 
+	 << (data.at(i))->lpx(model -> s_size)  
+	 << " (forward)" << endl;
+    cout << "log( P(x^" <<i << ") ) = " 
+	 << (data.at(i))->lpx2(model -> s_size) 
+	 << " (backward)" << endl;
   }
 }
 
@@ -379,8 +382,7 @@ void sequence::viterbi(hmm *model){
   for(int t = length - 1; t > 0; t--){
     vit[t - 1] = trbk[t][vit[t]];
   }
-  delete [] lv1;
-  delete [] lv2;
+  delete [] lv1;  delete [] lv2;
 }
 
 void sequence::forback_prep(hmm *model){
@@ -388,38 +390,46 @@ void sequence::forback_prep(hmm *model){
 
   /* 前向きアルゴリズムの準備 */
   f = allocat_mat(f, length + 1, model -> s_size + 1);
+  for(int t = 0; t <= length; t++){ f[t][model -> s_size] = 0; }
   /* 時刻tでのscaling factor は f[t][model -> s_size]に格納する */
   f[0][0] = 1; f[0][model -> s_size] = 1;
   for(int s = 1; s < model -> s_size; s++){ f[0][s] = 0;}
   
   /* 後ろ向きアルゴリズムの準備 */
   b = allocat_mat(f, length + 1, model -> s_size + 1);
+  for(int t = 0; t <= length; t++){ b[t][model -> s_size] = 0; }
   /* 時刻tでのscaling factor は f[t][model -> s_size]に格納する */
   b[length][0] = 0; b[length][model -> s_size] = 1;
   for(int s = 1; s < model -> s_size; s++){ 
-    b[length][s] = 1.0 / (model -> s_size - 1);
+    b[length][s] = 1.0;
   }
 }
 
 void sequence::forward(hmm *model){
-  cout << "!!" << endl;
   for(int t = 1; t <= length; t++){
-    cout << t << endl;
     int c = ary[t - 1];
-    cout << c << endl;
     /* まずは愚直に計算する */
     for(int l = 1; l < model -> s_size; l++){
       long double sum = 0;
-      for(int k = 0; model -> s_size; k++){
+      for(int k = 0; k < model -> s_size; k++){
 	sum += f[t - 1][k] * model -> trans[k][l];
       }
       f[t][l] = model -> emit[l][c] * sum;
+      //cout << "f[" << t << "][" << l << "] = " << f[t][l] << endl;
     }
+
     /* スケーリングを行う \sum_s f[t][s] = 1 と規格化 */
-    for(int s = 0; model -> s_size; s++){ 
+    for(int s = 0; s < model -> s_size; s++){ 
       f[t][model -> s_size] += f[t][s];
     }
-    for(int s = 0; model -> s_size; s++){ 
+#if 0 /* 表が正しく計算されているか表示して Debug する */
+    printf(" t =%3d : ", t);
+    for(int s = 0; s < model -> s_size + 1; s++){ 
+      printf("  %Lf", f[t][s]);
+    }
+    printf("\n");
+#endif
+    for(int s = 0; s < model -> s_size; s++){ 
       f[t][s] /= f[t][model -> s_size];
     }
   }
@@ -429,27 +439,42 @@ void sequence::forward(hmm *model){
 void sequence::backward(hmm *model){
   for(int t = length - 1; t >= 0; t--){
     int c = ary[t]; /* (t + 1) - 1 */
-    for(int k = 0; model -> s_size; k++){
-      for(int l = 0; model -> s_size; l++){
-	b[t][l] += model -> trans[k][l] * model -> emit[l][c] * b[t + 1][l];
+    for(int k = 0; k < model -> s_size; k++){
+      b[t][k] = 0;
+      for(int l = 1; l < model -> s_size; l++){
+	b[t][k] += model -> trans[k][l] * model -> emit[l][c] * b[t + 1][l];
       }
     }
     /* スケーリングを行う \sum_s f[t][s] = 1 と規格化 */
-    for(int s = 0; model -> s_size; s++){ 
-      f[t][model -> s_size] += f[t][s];
+    for(int s = 0; s < model -> s_size; s++){ 
+      b[t][model -> s_size] += b[t][s];
     }
-    for(int s = 0; model -> s_size; s++){ 
-      f[t][s] /= f[t][model -> s_size];
+#if 0 /* 表が正しく計算されているか表示して Debug する */
+    printf(" t =%3d : ", t);
+    for(int s = 0; s < model -> s_size + 1; s++){ 
+      printf("  %Lf", b[t][s]);
+    }
+    printf("\n");
+#endif
+    for(int s = 0; s < model -> s_size; s++){ 
+      b[t][s] /= b[t][model -> s_size];
     }
   }
   return;
 }
 
 long double sequence::lpx(int s_size){
-  long double lpx;
-  /* log ( P(x) ) */
-  for(int t = 0; t <= length; t++){
-    lpx += logl(f[t][s_size]);
+  /* 前向きアルゴリズムの結果を用いて計算する */
+  long double lpx = 0;   /* log ( P(x) ) */
+  for(int t = 0; t <= length; t++){ lpx += logl(f[t][s_size]); }
+  return lpx;
+}
+
+long double sequence::lpx2(int s_size){
+  /* 後ろ向きアルゴリズムの結果を用いて計算する */
+  long double lpx = logl(b[0][0]);
+  for(int t = length - 1; t >= 0; t--){
+    lpx += logl(b[t][s_size]); 
   }
   return lpx;
 }
