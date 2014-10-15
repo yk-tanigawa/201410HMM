@@ -18,12 +18,16 @@ string str_delete_space(string);
 class job {
   hmm *model; vector <sequence *> data;
 public:
-  void dump();
   void init(hmm *m, vector <sequence *> seq){
     model = m; data = seq;
   }
+  void dump();
   void viterbi();
   void viterbi_dump();
+  void forback_prep();
+  void forward();
+  void backward();
+  void lpx_dump();
   friend job *read_from_input_file(char *, char *);
 };
 
@@ -34,9 +38,15 @@ public:
   void dump();
   void viterbi(hmm *);
   void viterbi_dump();
+  void forback_prep(hmm *);
+  void forward(hmm *);
+  void backward(hmm *);
+  long double lpx(int);
+#if 0
   int len()     { return length; }
   string head() { return header; }
   int x(int i)  { return ary[i]; }
+#endif
   friend sequence *seq_init(string header, int *ary, int length);
 };
 
@@ -68,6 +78,10 @@ public:
   }
   friend job *read_from_input_file(char *, char *);
   friend void sequence::viterbi(hmm *);
+  friend void sequence::forback_prep(hmm *);
+  friend void sequence::forward(hmm *);
+  friend void sequence::backward(hmm *);
+  friend void job::lpx_dump();
 };
 
 vector<string> split(const string &str, char delim){
@@ -238,9 +252,15 @@ int main(int argc, char *argv[]){
     return EXIT_FAILURE;
   }else{
     job *myjob = read_from_input_file(argv[1], argv[2]);
-    myjob -> dump();
-    myjob -> viterbi();
-    myjob -> viterbi_dump();
+    //myjob -> dump();
+    //myjob -> viterbi();
+    //myjob -> viterbi_dump();
+    myjob -> forback_prep();
+    cout << "hello !" << endl;
+    myjob -> forward();
+    myjob -> backward();
+    cout << "hello !" << endl;
+    myjob -> lpx_dump();
   }
 }
 
@@ -295,9 +315,28 @@ void job::viterbi(){
   for(int i = 0; i < data.size(); i++){ (data.at(i))->viterbi(model); }
 }
 
+void job::forback_prep(){
+  for(int i = 0; i < data.size(); i++){ (data.at(i))->forback_prep(model); }
+}
+
+void job::forward(){
+  for(int i = 0; i < data.size(); i++){ (data.at(i))->forward(model); }
+}
+
+void job::backward(){
+  for(int i = 0; i < data.size(); i++){ (data.at(i))->backward(model); }
+}
+
 void job::viterbi_dump(){
   for(int i = 0; i < data.size(); i++){
     (data.at(i))->viterbi_dump(); 
+  }
+}
+
+void job::lpx_dump(){
+  for(int i = 0; i < data.size(); i++){
+    cout << "log( P(x^" <<i << ")) = " 
+	 << (data.at(i))->lpx(model -> s_size)  << endl;
   }
 }
 
@@ -344,3 +383,73 @@ void sequence::viterbi(hmm *model){
   delete [] lv2;
 }
 
+void sequence::forback_prep(hmm *model){
+  /* 前向き後ろ向きの準備を行う。 メモリを割り当てて，値をセットする。 */
+
+  /* 前向きアルゴリズムの準備 */
+  f = allocat_mat(f, length + 1, model -> s_size + 1);
+  /* 時刻tでのscaling factor は f[t][model -> s_size]に格納する */
+  f[0][0] = 1; f[0][model -> s_size] = 1;
+  for(int s = 1; s < model -> s_size; s++){ f[0][s] = 0;}
+  
+  /* 後ろ向きアルゴリズムの準備 */
+  b = allocat_mat(f, length + 1, model -> s_size + 1);
+  /* 時刻tでのscaling factor は f[t][model -> s_size]に格納する */
+  b[length][0] = 0; b[length][model -> s_size] = 1;
+  for(int s = 1; s < model -> s_size; s++){ 
+    b[length][s] = 1.0 / (model -> s_size - 1);
+  }
+}
+
+void sequence::forward(hmm *model){
+  cout << "!!" << endl;
+  for(int t = 1; t <= length; t++){
+    cout << t << endl;
+    int c = ary[t - 1];
+    cout << c << endl;
+    /* まずは愚直に計算する */
+    for(int l = 1; l < model -> s_size; l++){
+      long double sum = 0;
+      for(int k = 0; model -> s_size; k++){
+	sum += f[t - 1][k] * model -> trans[k][l];
+      }
+      f[t][l] = model -> emit[l][c] * sum;
+    }
+    /* スケーリングを行う \sum_s f[t][s] = 1 と規格化 */
+    for(int s = 0; model -> s_size; s++){ 
+      f[t][model -> s_size] += f[t][s];
+    }
+    for(int s = 0; model -> s_size; s++){ 
+      f[t][s] /= f[t][model -> s_size];
+    }
+  }
+  return;
+}
+
+void sequence::backward(hmm *model){
+  for(int t = length - 1; t >= 0; t--){
+    int c = ary[t]; /* (t + 1) - 1 */
+    for(int k = 0; model -> s_size; k++){
+      for(int l = 0; model -> s_size; l++){
+	b[t][l] += model -> trans[k][l] * model -> emit[l][c] * b[t + 1][l];
+      }
+    }
+    /* スケーリングを行う \sum_s f[t][s] = 1 と規格化 */
+    for(int s = 0; model -> s_size; s++){ 
+      f[t][model -> s_size] += f[t][s];
+    }
+    for(int s = 0; model -> s_size; s++){ 
+      f[t][s] /= f[t][model -> s_size];
+    }
+  }
+  return;
+}
+
+long double sequence::lpx(int s_size){
+  long double lpx;
+  /* log ( P(x) ) */
+  for(int t = 0; t <= length; t++){
+    lpx += logl(f[t][s_size]);
+  }
+  return lpx;
+}
