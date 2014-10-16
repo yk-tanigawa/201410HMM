@@ -1,0 +1,2 @@
+ [forward]  log( P(x^0) ) = -928.061
+ [backward] log( P(x^0) ) = -928.061

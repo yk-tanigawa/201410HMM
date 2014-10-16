@@ -1,7 +1,7 @@
 CC = g++
 LD = g++
-CFLAGS = -Wall -lm -O2
-LDFLAGS = -lm #-lpthread
+CFLAGS =  -O2
+LDFLAGS =  #-lpthread
 SRCS := $(wildcard *.cpp) # wildcard
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(SRCS:.cpp=.dep)
@@ -9,9 +9,15 @@ EXEC = $(SRCS:.cpp=)
 RM = rm -f
 
 
-all: hmm
+all:
 
-hmm: hmm.o
+kadai1main: kadai1main.o
+	$(LD)  -o $@ $^ $(LDFLAGS)
+
+kadai2main: kadai2main.o
+	$(LD)  -o $@ $^ $(LDFLAGS)
+
+kadai3main: kadai3main.o
 	$(LD)  -o $@ $^ $(LDFLAGS)
 
 clean:

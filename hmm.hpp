@@ -53,7 +53,9 @@ public:
   long double forward_tk(int t, int k){  return f[t][k]; }
   long double backward_tk(int t, int k){ return b[t][k]; }
   long double Akl(hmm *, int, int);
+  long double Akl_sub(hmm *, int);
   long double Ekc(hmm *, int, int);
+  long double Ekc_sub(hmm *, int);
 #if 0
   int len()     { return length; }
   string head() { return header; }
@@ -261,32 +263,6 @@ job *read_from_input_file(char *param_file, char *data_file){
   job *jb = new job;
   jb -> init(model, model -> get_data(data_fs));
   return jb;
-}
-
-int main(int argc, char *argv[]){
-  if(argc < 2){
-    cerr << "usage: $" << argv[0] 
-	 << " <parameter file> <FASTA file>" << endl;
-    return EXIT_FAILURE;
-  }else{
-    job *myjob = read_from_input_file(argv[1], argv[2]);
-
-#if 0
-    myjob -> dump();
-    myjob -> viterbi();  myjob -> viterbi_dump();
-#endif
-
-    myjob -> forback_prep();
-
-#if 0
-    myjob -> forward(); myjob -> backward();
-    myjob -> lpx_dump(); /* log P(x) が正しく計算できているか確認 */
-#endif
-
-    int BaumWelch_repeatNum = myjob -> BaumWelch();
-    cout << "repeat num : " << BaumWelch_repeatNum << endl;
-    myjob -> viterbi();  myjob -> viterbi_dump();
-  }
 }
 
 void job::dump(){
@@ -497,14 +473,14 @@ void sequence::backward(hmm *model){
 }
 
 
-long double sequence::lpx(int s_size){
+inline long double sequence::lpx(int s_size){
   /* 前向きアルゴリズムの結果を用いて計算する */
   long double lpx = 0;   /* log ( P(x) ) */
   for(int t = 0; t <= length; t++){ lpx += logl(f[t][s_size]); }
   return lpx;
 }
 
-long double sequence::lpx2(int s_size){
+inline long double sequence::lpx2(int s_size){
   /* 後ろ向きアルゴリズムの結果を用いて計算する */
   long double lpx = logl(b[0][0]);
   for(int t = length - 1; t >= 0; t--){
@@ -527,16 +503,16 @@ int job::BaumWelch(){
     Estep(A, E); Mstep(A, E); t++;
     forward(); backward(); lpx_before = lpx; lpx = lpx_sum();
     //cout << lpx_before << "\t" << lpx - lpx_before << endl;
-    if(lpx - lpx_before < 0.5 || t > 30) break;
+    if(lpx - lpx_before < 0.5 || t > 40) break;
   }
   return t;
 }
 
-void hmm::set_trans(int k, int l, long double Akl){
+inline void hmm::set_trans(int k, int l, long double Akl){
   trans[k][l] = Akl; ltrans[k][l] = logl(Akl); return;
 }
 
-void hmm::set_emit(int k, int c, long double Ekc){
+inline void hmm::set_emit(int k, int c, long double Ekc){
   emit[k][c] = Ekc;  lemit[k][c] = logl(Ekc);  return;
 }
 
@@ -567,7 +543,7 @@ void job::Estep(long double **A, long double **E){
   return;
 }
 
-long double job::Akl(int k, int l){
+inline long double job::Akl(int k, int l){
   long double sum = 0;
   for(int j = 0; j < data.size(); j++){
     sum += (data.at(j))->Akl(model, k, l);
@@ -575,16 +551,27 @@ long double job::Akl(int k, int l){
   return sum;
 }
 
-long double sequence::Akl(hmm *model, int k, int l){
+inline long double sequence::Akl_sub(hmm *model, int t){
   long double sum = 0;
-  for(int t = 0; t < length - 1; t++){
-    sum += f[t][k] * b[t + 1][l] / b[t][0] * (model -> trans[k][l]) 
-      * (model -> emit[l][ary[t - 1]]);
+  for(int k = 0; k < model -> get_s_size(); k++){
+    sum += f[t][k] * b[t][k];
   }
   return sum;
 }
 
-long double job::Ekc(int k, int c){
+inline long double sequence::Akl(hmm *model, int k, int l){
+  long double sum = 0;
+  for(int t = 0; t < length - 1; t++){
+    sum += f[t][k] * b[t + 1][l] 
+      / b[t][model -> get_s_size()] 
+      * (model -> trans[k][l]) 
+      * (model -> emit[l][ary[t - 1]])
+      / Akl_sub(model, t);
+  }
+  return sum;
+}
+
+inline long double job::Ekc(int k, int c){
   long double sum = 0;
   for(int j = 0; j < data.size(); j++){
     sum += (data.at(j))->Ekc(model, k, c);
@@ -592,10 +579,46 @@ long double job::Ekc(int k, int c){
   return sum;
 }
 
-long double sequence::Ekc(hmm *model, int k, int c){
-  long double sum = 0;
-  for(int t = 0; t < length - 1; t++){
-    if( ary[t - 1] == c ){ sum += f[t][k] * b[t + 1][k] / b[t][0]; }
-  }
-  return sum;
+inline long double sequence::Ekc_sub(hmm *model, int t){
+  return Akl_sub(model, t);
 }
+
+inline long double sequence::Ekc(hmm *model, int k, int c){
+  long double sum_cond = 0;
+  for(int t = 0; t < length - 1; t++){
+    long double temp = Ekc_sub(model, t);
+    if( ary[t - 1] == c ){
+      sum_cond += f[t][k] * b[t][k] / temp;
+    }
+  }
+  return sum_cond;
+}
+
+#if 0
+int main(int argc, char *argv[]){
+  if(argc < 2){
+    cerr << "usage: $" << argv[0] 
+	 << " <parameter file> <FASTA file>" << endl;
+    return EXIT_FAILURE;
+  }else{
+    job *myjob = read_from_input_file(argv[1], argv[2]);
+
+#if 0
+    myjob -> dump();
+    myjob -> viterbi();  myjob -> viterbi_dump();
+#endif
+
+    myjob -> forback_prep();
+
+#if 0
+    myjob -> forward(); myjob -> backward();
+    myjob -> lpx_dump(); /* log P(x) が正しく計算できているか確認 */
+#endif
+
+    int BaumWelch_repeatNum = myjob -> BaumWelch();
+    cout << "repeat num : " << BaumWelch_repeatNum << endl;
+    myjob -> viterbi();  myjob -> viterbi_dump();
+  }
+}
+#endif
+

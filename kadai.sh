@@ -1,10 +1,21 @@
 make clean
+
 echo "+---------- 課題1 Viterbi アルゴリズム -----------+"
-echo "+------- 課題2 前向き後ろ向き アルゴリズム -------+"
-echo " * buildして実行します。しばらくお待ちください..."
-make hmm
-./hmm params.txt sample-RNA.fa > "kadai_out.txt"
-make clean
+g++ kadai1main.cpp
+./a.out input/params.txt input/sample-RNA.fa > "kadai1_out.txt"
 echo " * 実行結果は次の通りです。"
-cat kadai_out.txt
-echo " * 結果は kadai_out.txt にも出力されました。"
+cat kadai1_out.txt
+
+echo "+------- 課題2 前向き後ろ向き アルゴリズム -------+"
+g++ kadai2main.cpp
+./a.out input/params.txt input/sample-RNA.fa > "kadai2_out.txt"
+echo " * 実行結果は次の通りです。"
+cat kadai2_out.txt
+
+echo "+------- 課題3 前向き後ろ向き アルゴリズム -------+"
+g++ kadai3main.cpp
+./a.out input/params3.txt input/trna-seq.txt > "kadai3_out.txt"
+echo " * 実行結果は次の通りです。"
+cat kadai3_out.txt
+
+rm a.out
