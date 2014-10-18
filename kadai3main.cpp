@@ -19,21 +19,11 @@ int main(int argc, char *argv[]){
   }else{
     job *myjob = read_from_input_file(argv[1], argv[2]);
 
-#if 0
-    myjob -> dump();
-    myjob -> viterbi();  myjob -> viterbi_dump();
-#endif
-
     myjob -> forback_prep();
-
-#if 0
-    myjob -> forward(); myjob -> backward();
-    myjob -> lpx_dump(); /* log P(x) が正しく計算できているか確認 */
-#endif
 
     int BaumWelch_repeatNum = myjob -> BaumWelch();
     cout << "repeat num : " << BaumWelch_repeatNum << endl;
-    myjob -> viterbi();  myjob -> viterbi_dump();
+    myjob -> viterbi();  myjob -> viterbi_dump(); myjob -> viterbi_delete();
   }
 }
 

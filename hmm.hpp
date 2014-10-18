@@ -25,9 +25,11 @@ public:
   void dump();
   void viterbi();
   void viterbi_dump();
+  void viterbi_delete();
   void forback_prep();
   void forward();
   void backward();
+  void forback_delete();
   void lpx_dump();
   long double lpx_sum();
   int BaumWelch();
@@ -40,6 +42,7 @@ public:
 
 class sequence{
   string header;  int length;  int *ary;  int *vit;
+  int **trbk;
   long double **f;  long double **b;
 public:
   void dump();
@@ -48,6 +51,7 @@ public:
   void forback_prep(hmm *);
   void forward(hmm *);
   void backward(hmm *);
+  void viterbi_delete(hmm *);
   long double lpx(int);
   long double lpx2(int);
   long double forward_tk(int t, int k){  return f[t][k]; }
@@ -56,6 +60,7 @@ public:
   long double Akl_sub(hmm *, int);
   long double Ekc(hmm *, int, int);
   long double Ekc_sub(hmm *, int);
+  void forback_delete(hmm *);
 #if 0
   int len()     { return length; }
   string head() { return header; }
@@ -82,6 +87,7 @@ public:
   void dump();
   void init(int _a_size, int _s_size);
   void init();
+  void hmm_delete();
   vector <sequence *> get_data(ifstream &data_fs);
   int *data_convert(const string str){ /* str のデータをint *に変換 */
     int *data = new int [str.length()];
@@ -92,16 +98,13 @@ public:
   }
   int get_s_size(){ return s_size; }
   int get_a_size(){ return a_size; }
+  long double get_trans(int i, int j){ return trans[i][j]; }
+  long double get_ltrans(int i, int j){ return ltrans[i][j]; }
+  long double get_emit(int i, int j){ return emit[i][j]; }
+  long double get_lemit(int i, int j){ return lemit[i][j]; }
   void set_trans(int, int, long double);
   void set_emit(int, int, long double);
   friend job *read_from_input_file(char *, char *);
-  friend void sequence::viterbi(hmm *);
-  friend void sequence::forback_prep(hmm *);
-  friend void sequence::forward(hmm *);
-  friend void sequence::backward(hmm *);
-  friend void job::lpx_dump();
-  friend long double sequence::Akl(hmm *, int, int);
-  friend long double sequence::Ekc(hmm *, int, int);
 };
 
 vector<string> split(const string &str, char delim){
@@ -145,6 +148,16 @@ T ** allocat_mat(T ** matrix, int n, int m){
     matrix [i] = new T [m];
   }
   return matrix;
+}
+
+template <class T> 
+void delete_mat(T ** matrix, int n, int m){
+  /* メモリをfreeする */
+  for(int i = 0; i < n; i++){
+    delete [] matrix [i];
+  }
+  delete [] matrix;
+  return;
 }
 
 template <class T>
@@ -234,11 +247,11 @@ job *read_from_input_file(char *param_file, char *data_file){
   model -> init();
 
   /* transittion probability */
-  for(int i = 0; i < model -> s_size; i++){
+  for(int i = 0; i < model -> get_s_size(); i++){
     getline_wocomment(comment_ch, param_fs, buf);
     vector<string> input_str = split(buf, ' ');
     long double input;
-    for(int j = 0; j < model -> s_size; j++){
+    for(int j = 0; j < model -> get_s_size(); j++){
       sscanf(input_str[j].c_str(), "%Lf", &input);
       model ->  trans[i][j] = input;
       model -> ltrans[i][j] = logl(input);
@@ -246,7 +259,7 @@ job *read_from_input_file(char *param_file, char *data_file){
   }
 
   /* emittion probability */
-  for(int i = 1; i < model -> s_size; i++){
+  for(int i = 1; i < model -> get_s_size(); i++){
     getline_wocomment(comment_ch, param_fs, buf);
     vector<string> input_str = split(buf, ' ');
     long double input;
@@ -302,18 +315,38 @@ void hmm::init(int _a_size, int _s_size){
 }
 
 void hmm::init(){
-  trans  = allocat_mat(trans, s_size, s_size);
-  ltrans = allocat_mat(trans, s_size, s_size);
-  emit   = allocat_mat(trans, s_size, a_size);
-  lemit  = allocat_mat(trans, s_size, a_size);
+  trans  = allocat_mat(trans,  s_size, s_size);
+  ltrans = allocat_mat(ltrans, s_size, s_size);
+  emit   = allocat_mat(emit,   s_size, a_size);
+  lemit  = allocat_mat(lemit,  s_size, a_size);
   for(int j = 0; j < a_size; j++){
     emit[0][j] = 0;  lemit[0][j] = logl(0);
   }
   return;
 }
 
+void hmm::hmm_delete(){
+  delete_mat(trans,  s_size, s_size);
+  delete_mat(ltrans, s_size, s_size);
+  delete_mat(emit,   s_size, a_size);
+  delete_mat(lemit,  s_size, a_size);
+  return;
+}  
+
 void job::viterbi(){
   for(int i = 0; i < data.size(); i++){ (data.at(i))->viterbi(model); }
+}
+
+void job::viterbi_dump(){
+  for(int i = 0; i < data.size(); i++){
+    (data.at(i))->viterbi_dump(); 
+  }
+}
+
+void job::viterbi_delete(){
+  for(int i = 0; i < data.size(); i++){ 
+    (data.at(i))->viterbi_delete(model); 
+  }
 }
 
 void job::forback_prep(){
@@ -328,9 +361,9 @@ void job::backward(){
   for(int i = 0; i < data.size(); i++){ (data.at(i))->backward(model); }
 }
 
-void job::viterbi_dump(){
-  for(int i = 0; i < data.size(); i++){
-    (data.at(i))->viterbi_dump(); 
+void job::forback_delete(){
+  for(int i = 0; i < data.size(); i++){ 
+    (data.at(i))->forback_delete(model); 
   }
 }
 
@@ -338,9 +371,9 @@ void job::lpx_dump(){
   /* 前向き・後ろ向きアルゴリズムの実装が正しいかを確認するため全確率を計算 */
   for(int i = 0; i < data.size(); i++){
     cout << " [forward]  " << "log( P(x^" <<i << ") ) = " 
-	 << (data.at(i))->lpx(model -> s_size) << endl;
+	 << (data.at(i))->lpx(model -> get_s_size()) << endl;
     cout << " [backward] " << "log( P(x^" <<i << ") ) = " 
-	 << (data.at(i))->lpx2(model -> s_size) << endl;
+	 << (data.at(i))->lpx2(model -> get_s_size()) << endl;
   }
 }
 
@@ -358,16 +391,20 @@ void sequence::viterbi_dump(){
   cout << endl; return;
 }
 
+void sequence::viterbi_delete(hmm *model){
+  delete_mat(trbk, length, model -> get_s_size());  return;
+}
+
 void sequence::viterbi(hmm *model){
   vit = new int [length];
-  long double *lv1, *lv2, **trbk;
+  long double *lv1, *lv2;
   lv1 = new long double [length];
   lv2 = new long double [length];
-  trbk = allocat_mat(trbk, length, model -> s_size);
+  trbk = allocat_mat(trbk, length, model -> get_s_size());
   
   /* Viterbi変数の初期化 */
   lv1[0] = logl(1);
-  for(int s = 1; s < model -> s_size; s++){ lv1[s] = logl(0); }
+  for(int s = 1; s < model -> get_s_size(); s++){ lv1[s] = logl(0); }
 
   /* Viterbiアルゴリズムの繰り返しステップ */
   long double *lv_before, *lv; /* viterbi 変数は表2行を交互に使う*/
@@ -375,19 +412,19 @@ void sequence::viterbi(hmm *model){
     int c = ary[t];
     if(t % 2 == 0){ lv_before = lv1; lv = lv2; }
     else          { lv_before = lv2; lv = lv1; }
-    for(int l = 0; l < model -> s_size; l++){ /* 状態が k => l に遷移した */
+    for(int l = 0; l < model -> get_s_size(); l++){ /* 状態が k => l に遷移した */
       long double max = -1 * INFINITY; int max_index = -1;
-      for(int k = 0; k < model -> s_size; k++){
-	long double ltrans_kl = model -> ltrans[k][l];
+      for(int k = 0; k < model -> get_s_size(); k++){
+	long double ltrans_kl = model -> get_ltrans(k, l);
 	long double temp = lv_before[k] + ltrans_kl;
 	if(temp > max){ max = temp; max_index = k; }
       }
-      lv[l] = model->lemit[l][c] + max; /* viterbi変数を計算 */
+      lv[l] = model->get_lemit(l, c) + max; /* viterbi変数を計算 */
       trbk[t][l] = max_index; /* trace back ポインタをセット */
     }
   }
   /* Viterbiアルゴリズムのトレースバック */
-  vit[length - 1] = find_max_index(lv, model -> s_size);
+  vit[length - 1] = find_max_index(lv, model -> get_s_size());
   for(int t = length - 1; t > 0; t--){
     vit[t - 1] = trbk[t][vit[t]];
   }
@@ -398,20 +435,26 @@ void sequence::forback_prep(hmm *model){
   /* 前向き後ろ向きの準備を行う。 メモリを割り当てて，値をセットする。 */
 
   /* 前向きアルゴリズムの準備 */
-  f = allocat_mat(f, length + 1, model -> s_size + 1);
-  for(int t = 0; t <= length; t++){ f[t][model -> s_size] = 0; }
-  /* 時刻tでのscaling factor は f[t][model -> s_size]に格納する */
-  f[0][0] = 1; f[0][model -> s_size] = 1;
-  for(int s = 1; s < model -> s_size; s++){ f[0][s] = 0;}
+  f = allocat_mat(f, length + 1, model -> get_s_size() + 1);
+  for(int t = 0; t <= length; t++){ f[t][model -> get_s_size()] = 0; }
+  /* 時刻tでのscaling factor は f[t][model -> get_s_size()]に格納する */
+  f[0][0] = 1; f[0][model -> get_s_size()] = 1;
+  for(int s = 1; s < model -> get_s_size(); s++){ f[0][s] = 0;}
   
   /* 後ろ向きアルゴリズムの準備 */
-  b = allocat_mat(f, length + 1, model -> s_size + 1);
-  for(int t = 0; t <= length; t++){ b[t][model -> s_size] = 0; }
-  /* 時刻tでのscaling factor は f[t][model -> s_size]に格納する */
-  b[length][0] = 0; b[length][model -> s_size] = 1;
-  for(int s = 1; s < model -> s_size; s++){ 
+  b = allocat_mat(f, length + 1, model -> get_s_size() + 1);
+  for(int t = 0; t <= length; t++){ b[t][model -> get_s_size()] = 0; }
+  /* 時刻tでのscaling factor は f[t][model -> get_s_size()]に格納する */
+  b[length][0] = 0; b[length][model -> get_s_size()] = 1;
+  for(int s = 1; s < model -> get_s_size(); s++){ 
     b[length][s] = 1.0;
   }
+}
+
+void sequence::forback_delete(hmm *model){
+  delete_mat(f, length + 1, model -> get_s_size() + 1);
+  delete_mat(b, length + 1, model -> get_s_size() + 1);
+  return;
 }
 
 void sequence::forward(hmm *model){
@@ -421,9 +464,9 @@ void sequence::forward(hmm *model){
     for(int l = 1; l < model -> get_s_size(); l++){
       long double sum = 0;
       for(int k = 0; k < model -> get_s_size(); k++){
-	sum += f[t - 1][k] * model -> trans[k][l];
+	sum += f[t - 1][k] * model -> get_trans(k, l);
       }
-      f[t][l] = model -> emit[l][c] * sum;
+      f[t][l] = model -> get_emit(l, c) * sum;
       //cout << "f[" << t << "][" << l << "] = " << f[t][l] << endl;
     }
 
@@ -451,7 +494,7 @@ void sequence::backward(hmm *model){
     for(int k = 0; k < model -> get_s_size(); k++){
       b[t][k] = 0;
       for(int l = 1; l < model -> get_s_size(); l++){
-	b[t][k] += model -> trans[k][l] * model -> emit[l][c] * b[t + 1][l];
+	b[t][k] += model -> get_trans(k, l) * model -> get_emit(l, c) * b[t + 1][l];
       }
     }
     /* スケーリングを行う \sum_s f[t][s] = 1 と規格化 */
@@ -494,16 +537,13 @@ int job::BaumWelch(){
     allocat_mat(A, model -> get_s_size(), model -> get_s_size() + 1);
   long double **E = 
     allocat_mat(E, model -> get_s_size(), model -> get_a_size() + 1);
-
   long double lpx = -1 * DBL_MAX, lpx_before = 0;
-
-  forward(); backward();
-  int t = 0;
+  forward(); backward(); int t = 0;
   while(1){
-    Estep(A, E); Mstep(A, E); t++;
+    Estep(A, E);  Mstep(A, E);  t++;
     forward(); backward(); lpx_before = lpx; lpx = lpx_sum();
     //cout << lpx_before << "\t" << lpx - lpx_before << endl;
-    if(lpx - lpx_before < 0.5 || t > 40) break;
+    if(lpx - lpx_before < 0.1 || t > 200) break;
   }
   return t;
 }
@@ -515,7 +555,6 @@ inline void hmm::set_trans(int k, int l, long double Akl){
 inline void hmm::set_emit(int k, int c, long double Ekc){
   emit[k][c] = Ekc;  lemit[k][c] = logl(Ekc);  return;
 }
-
 
 void job::Mstep(long double **A, long double **E){
   for(int k = 0; k < model -> get_s_size(); k++){
@@ -533,7 +572,7 @@ void job::Estep(long double **A, long double **E){
   for(int k = 0; k < model -> get_s_size(); k++){
     A[k][model -> get_s_size()] = 0; /* 行kのlに関する和をここに入れる */
     for(int l = 0; l < model -> get_s_size(); l++){
-      A[k][l] = Akl(k, l); A[k][model -> get_s_size()] += A[k][l];
+      A[k][l] = Akl(k, l);  A[k][model -> get_s_size()] += A[k][l];
     }
     E[k][model -> get_a_size()] = 0; /* 行kのcに関する和をここに入れる */
     for(int c = 0; c < model -> get_a_size(); c++){
@@ -546,26 +585,24 @@ void job::Estep(long double **A, long double **E){
 inline long double job::Akl(int k, int l){
   long double sum = 0;
   for(int j = 0; j < data.size(); j++){
-    sum += (data.at(j))->Akl(model, k, l);
+    sum += ((data.at(j))->Akl(model, k, l));
   }
   return sum;
 }
 
 inline long double sequence::Akl_sub(hmm *model, int t){
   long double sum = 0;
-  for(int k = 0; k < model -> get_s_size(); k++){
-    sum += f[t][k] * b[t][k];
-  }
+  for(int k = 0; k < model -> get_s_size(); k++){ sum += f[t][k] * b[t][k]; }
   return sum;
 }
 
 inline long double sequence::Akl(hmm *model, int k, int l){
   long double sum = 0;
-  for(int t = 0; t < length - 1; t++){
+  for(int t = 1; t < length - 1; t++){
     sum += f[t][k] * b[t + 1][l] 
       / b[t][model -> get_s_size()] 
-      * (model -> trans[k][l]) 
-      * (model -> emit[l][ary[t - 1]])
+      * (model -> get_trans(k, l)) 
+      * (model -> get_emit(l, ary[t - 1]))
       / Akl_sub(model, t);
   }
   return sum;
@@ -605,7 +642,7 @@ int main(int argc, char *argv[]){
 
 #if 0
     myjob -> dump();
-    myjob -> viterbi();  myjob -> viterbi_dump();
+    myjob -> viterbi();  myjob -> viterbi_dump(); myjob -> viterbi_delete();
 #endif
 
     myjob -> forback_prep();
@@ -617,7 +654,7 @@ int main(int argc, char *argv[]){
 
     int BaumWelch_repeatNum = myjob -> BaumWelch();
     cout << "repeat num : " << BaumWelch_repeatNum << endl;
-    myjob -> viterbi();  myjob -> viterbi_dump();
+    myjob -> viterbi();  myjob -> viterbi_dump(); myjob -> viterbi_delete();
   }
 }
 #endif
