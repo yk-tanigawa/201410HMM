@@ -18,6 +18,7 @@ string str_delete_space(string);
 
 class job {
   hmm *model; vector <sequence *> data;
+  /* 入力したデータと計算結果を全て保存する構造体 */
 public:
   void init(hmm *m, vector <sequence *> seq){
     model = m; data = seq;
@@ -41,6 +42,8 @@ public:
 };
 
 class sequence{
+  /* FASTAファイルの各配列に対してつくられる構造体
+   * 配列ごとにviterbi変数や前向き変数，後ろ向き変数などを持つ */
   string header;  int length;  int *ary;  int *vit;
   int **trbk;
   long double **f;  long double **b;
@@ -70,6 +73,7 @@ public:
 };
 
 class hmm{
+  /* パラメータファイルで与えられるHMMモデルを入れる構造体 */
   long double ** trans;   long double ** emit;
   long double ** ltrans;  long double ** lemit;
   int a_size;  int s_size;  char *alph;
@@ -171,7 +175,7 @@ int find_max_index(T *ary, int len){
   return index;
 }
 
-string str_delete_space(string buf){
+string str_delete_space(string buf){ /*スペースを消す*/
   string newstr;
   for(int i = 0; i < buf.length(); i++){
     if(buf[i] != ' '){ newstr += buf[i]; }
@@ -180,6 +184,7 @@ string str_delete_space(string buf){
 }
 
 sequence *seq_init(string header, int *ary, int length){
+  /* 引数で与えられたパラメタをsequence 構造体にセットして返す*/
   sequence *seq = new sequence;
   seq -> length = length;  seq -> header = header;
   seq -> ary = new int [length];
@@ -216,6 +221,7 @@ vector <sequence *> hmm::get_data(ifstream &data_fs){
 }
 
 job *read_from_input_file(char *param_file, char *data_file){
+  /* ファイルを開いてデータを読み込み，job構造体に格納する */
   /* open file stream */
   ifstream param_fs(param_file);
   if (param_fs.fail()){
@@ -278,8 +284,8 @@ job *read_from_input_file(char *param_file, char *data_file){
   return jb;
 }
 
-void job::dump(){
-  model -> dump();
+void job::dump(){ /*job全体を表示*/
+  model -> dump(); //まずモデルを表示して，各配列も表示
   for(int i = 0; i < data.size(); i++){ (data.at(i))->dump(); }
 }
 
@@ -304,6 +310,7 @@ void hmm::dump(){
 }
 
 void sequence::dump(){
+  /* FASTAにかかれていたヘッダーと配列長も表示 */
   cout << header << endl << "length : " << length << endl;
   for(int i = 0; i < length; i++){ cout << ary[i];}
   cout << endl;
@@ -314,7 +321,7 @@ void hmm::init(int _a_size, int _s_size){
   return this -> init();
 }
 
-void hmm::init(){
+void hmm::init(){ /*hmm構造体のメモリ領域を確保*/
   trans  = allocat_mat(trans,  s_size, s_size);
   ltrans = allocat_mat(ltrans, s_size, s_size);
   emit   = allocat_mat(emit,   s_size, a_size);
@@ -532,7 +539,16 @@ inline long double sequence::lpx2(int s_size){
   return lpx;
 }
 
+#define DEBUG_OUTPUT 1
+/* 対数尤度比の変化のグラフをプロットするためにデータを出力するかどうか */
 int job::BaumWelch(){
+#if DEBUG_OUTPUT
+  ofstream debug_fs("debug.txt");
+  if (debug_fs.fail()){
+    cerr << "cannot open debug file" << endl;
+    exit(1);
+  }
+#endif
   long double **A = 
     allocat_mat(A, model -> get_s_size(), model -> get_s_size() + 1);
   long double **E = 
@@ -542,9 +558,14 @@ int job::BaumWelch(){
   while(1){
     Estep(A, E);  Mstep(A, E);  t++;
     forward(); backward(); lpx_before = lpx; lpx = lpx_sum();
-    //cout << lpx_before << "\t" << lpx - lpx_before << endl;
-    if(lpx - lpx_before < 0.1 || t > 200) break;
+#if DEBUG_OUTPUT
+    debug_fs << t << "\t" << lpx_before << "\t" << lpx - lpx_before << endl;
+#endif
+    if(lpx - lpx_before < 0.01 * data.size() || t > 200) break;
   }
+#if DEBUG_OUTPUT
+  debug_fs.close();
+#endif  
   return t;
 }
 
@@ -631,6 +652,10 @@ inline long double sequence::Ekc(hmm *model, int k, int c){
   return sum_cond;
 }
 
+/*
+ * main 関数は下記のような感じで，各課題のmainプログラムファイルごとに定義する
+ */
+
 #if 0
 int main(int argc, char *argv[]){
   if(argc < 2){
@@ -640,17 +665,12 @@ int main(int argc, char *argv[]){
   }else{
     job *myjob = read_from_input_file(argv[1], argv[2]);
 
-#if 0
+
     myjob -> dump();
     myjob -> viterbi();  myjob -> viterbi_dump(); myjob -> viterbi_delete();
-#endif
-
     myjob -> forback_prep();
-
-#if 0
     myjob -> forward(); myjob -> backward();
     myjob -> lpx_dump(); /* log P(x) が正しく計算できているか確認 */
-#endif
 
     int BaumWelch_repeatNum = myjob -> BaumWelch();
     cout << "repeat num : " << BaumWelch_repeatNum << endl;
